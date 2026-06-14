@@ -42,7 +42,6 @@ export default function PdfViewerPane({
     setNumPages(0);
     setPageNumber(1);
     setPageInput("1");
-    setScale(1.2);
 
     if (!file) return;
 
