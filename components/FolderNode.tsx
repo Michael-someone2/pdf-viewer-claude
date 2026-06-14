@@ -9,7 +9,13 @@ import {
   Trash2,
 } from "lucide-react";
 import FileRow from "./FileRow";
-import type { FileRecord, FolderRecord, PaneId } from "@/lib/types";
+import {
+  DRAG_MIME_TYPE,
+  type DragPayload,
+  type FileRecord,
+  type FolderRecord,
+  type PaneId,
+} from "@/lib/types";
 
 export interface RenameState {
   type: "folder" | "file";
@@ -36,6 +42,10 @@ export interface FolderNodeProps {
   onRenameCancel: () => void;
   onDeleteFolder: (folder: FolderRecord) => void;
   onDeleteFile: (file: FileRecord) => void;
+  onMoveFile: (fileId: string, targetFolderId: string | null) => void;
+  onMoveFolder: (folderId: string, targetFolderId: string | null) => void;
+  dragOverTarget: string | null;
+  onSetDragOverTarget: (target: string | null) => void;
 }
 
 export default function FolderNode(props: FolderNodeProps) {
@@ -59,6 +69,10 @@ export default function FolderNode(props: FolderNodeProps) {
     onRenameCancel,
     onDeleteFolder,
     onDeleteFile,
+    onMoveFile,
+    onMoveFolder,
+    dragOverTarget,
+    onSetDragOverTarget,
   } = props;
 
   const isExpanded = expanded.has(folder.id);
@@ -75,8 +89,42 @@ export default function FolderNode(props: FolderNodeProps) {
   return (
     <div>
       <div
+        draggable={!isRenaming}
+        onDragStart={(e) => {
+          e.dataTransfer.setData(
+            DRAG_MIME_TYPE,
+            JSON.stringify({
+              type: "folder",
+              id: folder.id,
+            } satisfies DragPayload),
+          );
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragEnd={() => onSetDragOverTarget(null)}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes(DRAG_MIME_TYPE)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (dragOverTarget !== folder.id) onSetDragOverTarget(folder.id);
+        }}
+        onDragLeave={() => {
+          if (dragOverTarget === folder.id) onSetDragOverTarget(null);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const raw = e.dataTransfer.getData(DRAG_MIME_TYPE);
+          onSetDragOverTarget(null);
+          if (!raw) return;
+          const payload: DragPayload = JSON.parse(raw);
+          if (payload.type === "file") onMoveFile(payload.id, folder.id);
+          else onMoveFolder(payload.id, folder.id);
+        }}
         className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 ${
           isActive ? "bg-slate-100 font-medium" : ""
+        } ${
+          dragOverTarget === folder.id
+            ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
+            : ""
         }`}
         style={{ paddingLeft: `${level * 16 + 4}px` }}
       >
@@ -85,11 +133,7 @@ export default function FolderNode(props: FolderNodeProps) {
           onClick={() => onToggleExpand(folder.id)}
           className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-200"
         >
-          {isExpanded ? (
-            <ChevronDown size={14} />
-          ) : (
-            <ChevronRight size={14} />
-          )}
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
         {isExpanded ? (
           <FolderOpen size={15} className="shrink-0 text-amber-500" />
@@ -158,9 +202,7 @@ export default function FolderNode(props: FolderNodeProps) {
               level={level + 1}
               isActiveLeft={activeFiles.left === file.id}
               isActiveRight={activeFiles.right === file.id}
-              isRenaming={
-                renaming?.type === "file" && renaming.id === file.id
-              }
+              isRenaming={renaming?.type === "file" && renaming.id === file.id}
               renameValue={renameValue}
               onOpen={onOpenFile}
               onStartRename={onStartRenameFile}
@@ -168,6 +210,7 @@ export default function FolderNode(props: FolderNodeProps) {
               onRenameSubmit={onRenameSubmit}
               onRenameCancel={onRenameCancel}
               onDelete={onDeleteFile}
+              onSetDragOverTarget={onSetDragOverTarget}
             />
           ))}
         </div>

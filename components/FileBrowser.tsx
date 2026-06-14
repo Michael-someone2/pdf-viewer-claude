@@ -6,7 +6,13 @@ import { createClient } from "@/lib/supabase/client";
 import { getDescendantFolderIds } from "@/lib/files";
 import FolderNode, { type RenameState } from "./FolderNode";
 import FileRow from "./FileRow";
-import type { FileRecord, FolderRecord, PaneId } from "@/lib/types";
+import {
+  DRAG_MIME_TYPE,
+  type DragPayload,
+  type FileRecord,
+  type FolderRecord,
+  type PaneId,
+} from "@/lib/types";
 
 interface FileBrowserProps {
   onOpenFile: (file: FileRecord, pane: PaneId) => void;
@@ -28,6 +34,7 @@ export default function FileBrowser({
   const [renameValue, setRenameValue] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     const supabase = createClient();
@@ -65,8 +72,7 @@ export default function FileBrowser({
       return;
     }
     const supabase = createClient();
-    const { data: userData, error: userError } =
-      await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     if (!userId) {
       setError(
@@ -99,8 +105,7 @@ export default function FileBrowser({
     const filesToUpload = Array.from(fileList);
 
     const supabase = createClient();
-    const { data: userData, error: userError } =
-      await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     if (!userId) {
       setError(
@@ -141,9 +146,7 @@ export default function FileBrowser({
         });
         if (insertError) {
           console.error("Insert error:", insertError);
-          setError(
-            `Ошибка сохранения «${file.name}»: ${insertError.message}`,
-          );
+          setError(`Ошибка сохранения «${file.name}»: ${insertError.message}`);
         }
       }
 
@@ -164,9 +167,7 @@ export default function FileBrowser({
   };
 
   const handleDeleteFolder = async (folder: FolderRecord) => {
-    if (
-      !window.confirm(`Удалить папку «${folder.name}» со всем содержимым?`)
-    ) {
+    if (!window.confirm(`Удалить папку «${folder.name}» со всем содержимым?`)) {
       return;
     }
     const supabase = createClient();
@@ -186,6 +187,52 @@ export default function FileBrowser({
     if (deleteError) setError(deleteError.message);
     if (activeFolderId && idsToDelete.includes(activeFolderId)) {
       setActiveFolderId(folder.parent_id);
+    }
+    await loadData();
+  };
+
+  const handleMoveFile = async (
+    fileId: string,
+    targetFolderId: string | null,
+  ) => {
+    const file = files.find((f) => f.id === fileId);
+    if (!file || file.folder_id === targetFolderId) return;
+    const supabase = createClient();
+    const { error: updateError } = await supabase
+      .from("files")
+      .update({ folder_id: targetFolderId })
+      .eq("id", fileId);
+    if (updateError) setError(updateError.message);
+    if (targetFolderId) {
+      setExpanded((prev) => new Set(prev).add(targetFolderId));
+    }
+    await loadData();
+  };
+
+  const handleMoveFolder = async (
+    folderId: string,
+    targetFolderId: string | null,
+  ) => {
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    if (folderId === targetFolderId || folder.parent_id === targetFolderId) {
+      return;
+    }
+    if (
+      targetFolderId &&
+      getDescendantFolderIds(folders, folderId).includes(targetFolderId)
+    ) {
+      setError("Невозможно переместить папку в одну из её вложенных папок.");
+      return;
+    }
+    const supabase = createClient();
+    const { error: updateError } = await supabase
+      .from("folders")
+      .update({ parent_id: targetFolderId })
+      .eq("id", folderId);
+    if (updateError) setError(updateError.message);
+    if (targetFolderId) {
+      setExpanded((prev) => new Set(prev).add(targetFolderId));
     }
     await loadData();
   };
@@ -245,7 +292,7 @@ export default function FileBrowser({
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
   const activeFolderName = activeFolderId
-    ? folders.find((f) => f.id === activeFolderId)?.name ?? "Корень"
+    ? (folders.find((f) => f.id === activeFolderId)?.name ?? "Корень")
     : "Корень";
 
   return (
@@ -285,9 +332,7 @@ export default function FileBrowser({
         </div>
         <p className="truncate text-xs text-slate-500">
           Текущая папка:{" "}
-          <span className="font-medium text-slate-700">
-            {activeFolderName}
-          </span>
+          <span className="font-medium text-slate-700">{activeFolderName}</span>
         </p>
         {creatingFolder && (
           <div className="mt-2 flex gap-1.5">
@@ -324,10 +369,30 @@ export default function FileBrowser({
             <button
               type="button"
               onClick={() => setActiveFolderId(null)}
+              onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes(DRAG_MIME_TYPE)) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (dragOverTarget !== "root") setDragOverTarget("root");
+              }}
+              onDragLeave={() => {
+                if (dragOverTarget === "root") setDragOverTarget(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const raw = e.dataTransfer.getData(DRAG_MIME_TYPE);
+                setDragOverTarget(null);
+                if (!raw) return;
+                const payload: DragPayload = JSON.parse(raw);
+                if (payload.type === "file") handleMoveFile(payload.id, null);
+                else handleMoveFolder(payload.id, null);
+              }}
               className={`mb-1 w-full rounded px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide ${
-                activeFolderId === null
-                  ? "bg-slate-100 text-slate-700"
-                  : "text-slate-400 hover:bg-slate-50"
+                dragOverTarget === "root"
+                  ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
+                  : activeFolderId === null
+                    ? "bg-slate-100 text-slate-700"
+                    : "text-slate-400 hover:bg-slate-50"
               }`}
             >
               Корень
@@ -354,6 +419,10 @@ export default function FileBrowser({
                 onRenameCancel={cancelRename}
                 onDeleteFolder={handleDeleteFolder}
                 onDeleteFile={handleDeleteFile}
+                onMoveFile={handleMoveFile}
+                onMoveFolder={handleMoveFolder}
+                dragOverTarget={dragOverTarget}
+                onSetDragOverTarget={setDragOverTarget}
               />
             ))}
             {rootFiles.map((file) => (
@@ -373,6 +442,7 @@ export default function FileBrowser({
                 onRenameSubmit={submitRename}
                 onRenameCancel={cancelRename}
                 onDelete={handleDeleteFile}
+                onSetDragOverTarget={setDragOverTarget}
               />
             ))}
             {rootFolders.length === 0 && rootFiles.length === 0 && (

@@ -17,3 +17,10 @@ export interface FileRecord {
 }
 
 export type PaneId = "left" | "right";
+
+export interface DragPayload {
+  type: "file" | "folder";
+  id: string;
+}
+
+export const DRAG_MIME_TYPE = "application/x-pdfviewer-item";

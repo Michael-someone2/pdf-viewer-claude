@@ -2,7 +2,12 @@
 
 import { Columns2, FileText, Pencil, Trash2 } from "lucide-react";
 import { formatBytes } from "@/lib/files";
-import type { FileRecord, PaneId } from "@/lib/types";
+import {
+  DRAG_MIME_TYPE,
+  type DragPayload,
+  type FileRecord,
+  type PaneId,
+} from "@/lib/types";
 
 interface FileRowProps {
   file: FileRecord;
@@ -17,6 +22,7 @@ interface FileRowProps {
   onRenameSubmit: () => void;
   onRenameCancel: () => void;
   onDelete: (file: FileRecord) => void;
+  onSetDragOverTarget: (target: string | null) => void;
 }
 
 export default function FileRow({
@@ -32,9 +38,19 @@ export default function FileRow({
   onRenameSubmit,
   onRenameCancel,
   onDelete,
+  onSetDragOverTarget,
 }: FileRowProps) {
   return (
     <div
+      draggable={!isRenaming}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(
+          DRAG_MIME_TYPE,
+          JSON.stringify({ type: "file", id: file.id } satisfies DragPayload),
+        );
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragEnd={() => onSetDragOverTarget(null)}
       className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 ${
         isActiveLeft || isActiveRight ? "bg-slate-100" : ""
       }`}
