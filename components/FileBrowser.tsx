@@ -65,9 +65,18 @@ export default function FileBrowser({
       return;
     }
     const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } =
+      await supabase.auth.getUser();
     const userId = userData.user?.id;
-    if (!userId) return;
+    if (!userId) {
+      setError(
+        `Не удалось определить пользователя (сессия истекла). Перезайдите в аккаунт и попробуйте снова.${
+          userError ? ` (${userError.message})` : ""
+        }`,
+      );
+      setCreatingFolder(false);
+      return;
+    }
 
     const { error: insertError } = await supabase.from("folders").insert({
       user_id: userId,
@@ -86,46 +95,68 @@ export default function FileBrowser({
   const handleUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } =
+      await supabase.auth.getUser();
     const userId = userData.user?.id;
-    if (!userId) return;
+    if (!userId) {
+      setError(
+        `Не удалось определить пользователя (сессия истекла). Перезайдите в аккаунт и попробуйте снова.${
+          userError ? ` (${userError.message})` : ""
+        }`,
+      );
+      return;
+    }
 
     setUploading(true);
     setError(null);
 
-    for (const file of Array.from(fileList)) {
-      const isPdf =
-        file.type === "application/pdf" ||
-        file.name.toLowerCase().endsWith(".pdf");
-      if (!isPdf) continue;
+    try {
+      for (const file of Array.from(fileList)) {
+        const isPdf =
+          file.type === "application/pdf" ||
+          file.name.toLowerCase().endsWith(".pdf");
+        if (!isPdf) continue;
 
-      const path = `${userId}/${crypto.randomUUID()}.pdf`;
-      const { error: uploadError } = await supabase.storage
-        .from("pdfs")
-        .upload(path, file, { contentType: "application/pdf" });
+        const path = `${userId}/${crypto.randomUUID()}.pdf`;
+        const { error: uploadError } = await supabase.storage
+          .from("pdfs")
+          .upload(path, file, { contentType: "application/pdf" });
 
-      if (uploadError) {
-        setError(`Ошибка загрузки «${file.name}»: ${uploadError.message}`);
-        continue;
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          setError(`Ошибка загрузки «${file.name}»: ${uploadError.message}`);
+          continue;
+        }
+
+        const { error: insertError } = await supabase.from("files").insert({
+          user_id: userId,
+          folder_id: activeFolderId,
+          name: file.name,
+          storage_path: path,
+          size: file.size,
+        });
+        if (insertError) {
+          console.error("Insert error:", insertError);
+          setError(
+            `Ошибка сохранения «${file.name}»: ${insertError.message}`,
+          );
+        }
       }
 
-      const { error: insertError } = await supabase.from("files").insert({
-        user_id: userId,
-        folder_id: activeFolderId,
-        name: file.name,
-        storage_path: path,
-        size: file.size,
-      });
-      if (insertError) {
-        setError(`Ошибка сохранения «${file.name}»: ${insertError.message}`);
+      if (activeFolderId) {
+        setExpanded((prev) => new Set(prev).add(activeFolderId));
       }
+    } catch (err) {
+      console.error("Unexpected upload error:", err);
+      setError(
+        `Непредвиденная ошибка загрузки: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    } finally {
+      setUploading(false);
+      await loadData();
     }
-
-    if (activeFolderId) {
-      setExpanded((prev) => new Set(prev).add(activeFolderId));
-    }
-    setUploading(false);
-    await loadData();
   };
 
   const handleDeleteFolder = async (folder: FolderRecord) => {
