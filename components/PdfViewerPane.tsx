@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -16,6 +16,9 @@ import { createClient } from "@/lib/supabase/client";
 import type { FileRecord } from "@/lib/types";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+const PAGE_GAP = 16;
+const RENDER_BUFFER = 2;
 
 interface PdfViewerPaneProps {
   file: FileRecord | null;
@@ -33,8 +36,16 @@ export default function PdfViewerPane({
   const [pageNumber, setPageNumber] = useState(1);
   const [pageInput, setPageInput] = useState("1");
   const [scale, setScale] = useState(1.2);
+  const [pageSize, setPageSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const prevItemHeightRef = useRef<number | null>(null);
 
   useEffect(() => {
     setError(null);
@@ -42,6 +53,9 @@ export default function PdfViewerPane({
     setNumPages(0);
     setPageNumber(1);
     setPageInput("1");
+    setPageSize(null);
+    prevItemHeightRef.current = null;
+    if (containerRef.current) containerRef.current.scrollTop = 0;
 
     if (!file) return;
 
@@ -66,6 +80,36 @@ export default function PdfViewerPane({
     };
   }, [file]);
 
+  // При изменении масштаба пересчитываем прокрутку, чтобы текущая
+  // страница осталась на том же месте, а не "уплыла" из-за изменения
+  // высоты страниц.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !pageSize) return;
+    const newItemHeight = pageSize.height * scale + PAGE_GAP;
+    const prevItemHeight = prevItemHeightRef.current;
+    if (prevItemHeight && prevItemHeight !== newItemHeight) {
+      el.scrollTop = (el.scrollTop / prevItemHeight) * newItemHeight;
+    }
+    prevItemHeightRef.current = newItemHeight;
+  }, [scale, pageSize]);
+
+  const handleScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const el = containerRef.current;
+      if (!el || !pageSize || !numPages) return;
+      const itemHeight = pageSize.height * scale + PAGE_GAP;
+      const idx = Math.floor(el.scrollTop / itemHeight) + 1;
+      const clamped = Math.min(Math.max(idx, 1), numPages);
+      setPageNumber((prev) => (prev === clamped ? prev : clamped));
+      setPageInput((prev) =>
+        prev === String(clamped) ? prev : String(clamped),
+      );
+    });
+  }, [pageSize, scale, numPages]);
+
   const goToPage = (page: number) => {
     if (!Number.isFinite(page)) {
       setPageInput(String(pageNumber));
@@ -75,6 +119,11 @@ export default function PdfViewerPane({
     const clamped = Math.min(Math.max(Math.round(page), 1), max);
     setPageNumber(clamped);
     setPageInput(String(clamped));
+    const el = containerRef.current;
+    if (el && pageSize) {
+      const itemHeight = pageSize.height * scale + PAGE_GAP;
+      el.scrollTop = (clamped - 1) * itemHeight;
+    }
   };
 
   if (!file) {
@@ -177,7 +226,11 @@ export default function PdfViewerPane({
         )}
       </div>
 
-      <div className="flex-1 overflow-auto bg-slate-200 p-4">
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-auto bg-slate-200 p-4"
+      >
         {error && (
           <p className="mx-auto max-w-md rounded bg-red-50 px-3 py-2 text-center text-sm text-red-700">
             {error}
@@ -189,21 +242,48 @@ export default function PdfViewerPane({
           </div>
         )}
         {url && (
-          <div className="flex justify-center">
-            <Document
-              key={url}
-              file={url}
-              onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-              onLoadError={() => setError("Не удалось открыть PDF-файл")}
-              loading={
-                <div className="flex h-96 items-center justify-center text-slate-400">
-                  <Loader2 size={24} className="animate-spin" />
-                </div>
-              }
-            >
-              <Page pageNumber={pageNumber} scale={scale} />
-            </Document>
-          </div>
+          <Document
+            key={url}
+            file={url}
+            onLoadSuccess={(pdf) => {
+              setNumPages(pdf.numPages);
+              pdf.getPage(1).then((page) => {
+                const viewport = page.getViewport({ scale: 1 });
+                setPageSize({
+                  width: viewport.width,
+                  height: viewport.height,
+                });
+              });
+            }}
+            onLoadError={() => setError("Не удалось открыть PDF-файл")}
+            loading={
+              <div className="flex h-96 items-center justify-center text-slate-400">
+                <Loader2 size={24} className="animate-spin" />
+              </div>
+            }
+          >
+            {pageSize && (
+              <div className="flex flex-col items-center">
+                {Array.from({ length: numPages }, (_, i) => i + 1).map(
+                  (p) => (
+                    <div
+                      key={p}
+                      style={{
+                        width: pageSize.width * scale,
+                        height: pageSize.height * scale,
+                        marginBottom: PAGE_GAP,
+                      }}
+                      className="bg-white shadow"
+                    >
+                      {Math.abs(p - pageNumber) <= RENDER_BUFFER && (
+                        <Page pageNumber={p} scale={scale} loading={null} />
+                      )}
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </Document>
         )}
       </div>
     </div>
