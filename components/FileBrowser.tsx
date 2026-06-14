@@ -93,19 +93,15 @@ export default function FileBrowser({
   };
 
   const handleUpload = async (fileList: FileList | null) => {
-    console.log(
-      "handleUpload called, files:",
-      fileList ? Array.from(fileList).map((f) => f.name) : null,
-    );
-    if (!fileList || fileList.length === 0) {
-      console.log("handleUpload: no files, aborting");
-      return;
-    }
+    if (!fileList || fileList.length === 0) return;
+    // Снимок файлов нужно сделать сразу: после await onChange успевает
+    // сбросить input.value, что очищает живой объект FileList по ссылке.
+    const filesToUpload = Array.from(fileList);
+
     const supabase = createClient();
     const { data: userData, error: userError } =
       await supabase.auth.getUser();
     const userId = userData.user?.id;
-    console.log("handleUpload: userId =", userId, "userError =", userError);
     if (!userId) {
       setError(
         `Не удалось определить пользователя (сессия истекла). Перезайдите в аккаунт и попробуйте снова.${
@@ -119,26 +115,16 @@ export default function FileBrowser({
     setError(null);
 
     try {
-      for (const file of Array.from(fileList)) {
+      for (const file of filesToUpload) {
         const isPdf =
           file.type === "application/pdf" ||
           file.name.toLowerCase().endsWith(".pdf");
-        console.log(
-          "handleUpload: file",
-          file.name,
-          "type",
-          file.type,
-          "isPdf",
-          isPdf,
-        );
         if (!isPdf) continue;
 
         const path = `${userId}/${crypto.randomUUID()}.pdf`;
-        console.log("handleUpload: uploading to", path);
         const { error: uploadError } = await supabase.storage
           .from("pdfs")
           .upload(path, file, { contentType: "application/pdf" });
-        console.log("handleUpload: upload result error =", uploadError);
 
         if (uploadError) {
           console.error("Upload error:", uploadError);
@@ -153,7 +139,6 @@ export default function FileBrowser({
           storage_path: path,
           size: file.size,
         });
-        console.log("handleUpload: insert result error =", insertError);
         if (insertError) {
           console.error("Insert error:", insertError);
           setError(
