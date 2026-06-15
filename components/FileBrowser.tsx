@@ -35,6 +35,13 @@ export default function FileBrowser({
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const [touchDrag, setTouchDrag] = useState<{
+    payload: DragPayload;
+    label: string;
+  } | null>(null);
+  const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   const loadData = useCallback(async () => {
     const supabase = createClient();
@@ -237,6 +244,61 @@ export default function FileBrowser({
     await loadData();
   };
 
+  const handleStartTouchDrag = (
+    payload: DragPayload,
+    label: string,
+    x: number,
+    y: number,
+  ) => {
+    setTouchDrag({ payload, label });
+    setGhostPos({ x, y });
+  };
+
+  // Обработка перетаскивания на тач-устройствах: после долгого нажатия
+  // (см. useLongPressDrag) слушаем touchmove/touchend на всём документе,
+  // подсвечиваем папку под пальцем и выполняем перемещение при отпускании.
+  useEffect(() => {
+    if (!touchDrag) return;
+
+    const findTarget = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y);
+      return el?.closest<HTMLElement>("[data-drop-target]")?.dataset.dropTarget;
+    };
+
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      setGhostPos({ x: t.clientX, y: t.clientY });
+      setDragOverTarget(findTarget(t.clientX, t.clientY) ?? null);
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      const targetId = findTarget(t.clientX, t.clientY);
+      if (targetId !== undefined) {
+        const folderId = targetId === "root" ? null : targetId;
+        if (touchDrag.payload.type === "file") {
+          handleMoveFile(touchDrag.payload.id, folderId);
+        } else {
+          handleMoveFolder(touchDrag.payload.id, folderId);
+        }
+      }
+      setTouchDrag(null);
+      setGhostPos(null);
+      setDragOverTarget(null);
+    };
+
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+    document.addEventListener("touchcancel", onEnd);
+    return () => {
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touchDrag]);
+
   const handleDeleteFile = async (file: FileRecord) => {
     if (!window.confirm(`Удалить файл «${file.name}»?`)) return;
     const supabase = createClient();
@@ -387,6 +449,7 @@ export default function FileBrowser({
                 if (payload.type === "file") handleMoveFile(payload.id, null);
                 else handleMoveFolder(payload.id, null);
               }}
+              data-drop-target="root"
               className={`mb-1 w-full rounded px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide ${
                 dragOverTarget === "root"
                   ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
@@ -423,6 +486,7 @@ export default function FileBrowser({
                 onMoveFolder={handleMoveFolder}
                 dragOverTarget={dragOverTarget}
                 onSetDragOverTarget={setDragOverTarget}
+                onStartTouchDrag={handleStartTouchDrag}
               />
             ))}
             {rootFiles.map((file) => (
@@ -443,6 +507,7 @@ export default function FileBrowser({
                 onRenameCancel={cancelRename}
                 onDelete={handleDeleteFile}
                 onSetDragOverTarget={setDragOverTarget}
+                onStartTouchDrag={handleStartTouchDrag}
               />
             ))}
             {rootFolders.length === 0 && rootFiles.length === 0 && (
@@ -453,6 +518,15 @@ export default function FileBrowser({
           </>
         )}
       </div>
+
+      {touchDrag && ghostPos && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-900 shadow-lg"
+          style={{ left: ghostPos.x, top: ghostPos.y }}
+        >
+          {touchDrag.label}
+        </div>
+      )}
     </aside>
   );
 }

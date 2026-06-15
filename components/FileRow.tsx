@@ -8,6 +8,7 @@ import {
   type FileRecord,
   type PaneId,
 } from "@/lib/types";
+import { useLongPressDrag } from "@/lib/useLongPressDrag";
 
 interface FileRowProps {
   file: FileRecord;
@@ -23,6 +24,12 @@ interface FileRowProps {
   onRenameCancel: () => void;
   onDelete: (file: FileRecord) => void;
   onSetDragOverTarget: (target: string | null) => void;
+  onStartTouchDrag: (
+    payload: DragPayload,
+    label: string,
+    x: number,
+    y: number,
+  ) => void;
 }
 
 export default function FileRow({
@@ -39,7 +46,15 @@ export default function FileRow({
   onRenameCancel,
   onDelete,
   onSetDragOverTarget,
+  onStartTouchDrag,
 }: FileRowProps) {
+  const longPress = useLongPressDrag(
+    onStartTouchDrag,
+    { type: "file", id: file.id },
+    file.name,
+    isRenaming,
+  );
+
   return (
     <div
       draggable={!isRenaming}
@@ -51,6 +66,10 @@ export default function FileRow({
         e.dataTransfer.effectAllowed = "move";
       }}
       onDragEnd={() => onSetDragOverTarget(null)}
+      onTouchStart={longPress.onTouchStart}
+      onTouchMove={longPress.onTouchMove}
+      onTouchEnd={longPress.onTouchEnd}
+      onClickCapture={longPress.onClickCapture}
       className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 ${
         isActiveLeft || isActiveRight ? "bg-slate-100" : ""
       }`}
@@ -95,7 +114,7 @@ export default function FileRow({
         type="button"
         onClick={() => onOpen(file, "right")}
         title="Открыть в правой панели"
-        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex"
+        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex"
       >
         <Columns2 size={14} />
       </button>
@@ -103,7 +122,7 @@ export default function FileRow({
         type="button"
         onClick={() => onStartRename(file)}
         title="Переименовать"
-        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex"
+        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex"
       >
         <Pencil size={14} />
       </button>
@@ -111,7 +130,7 @@ export default function FileRow({
         type="button"
         onClick={() => onDelete(file)}
         title="Удалить"
-        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex"
+        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex [@media(hover:none)]:inline-flex"
       >
         <Trash2 size={14} />
       </button>

@@ -164,6 +164,38 @@ export default function PdfViewerPane({
     if (file) setViewerState(file.id, { scale: next });
   };
 
+  // Зум щипком (pinch) на тач-устройствах. touch-action: pan-y на
+  // контейнере отключает нативный зум браузера, не мешая вертикальной
+  // прокрутке одним пальцем.
+  const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
+
+  const touchDistance = (touches: React.TouchList) => {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      pinchRef.current = { distance: touchDistance(e.touches), scale };
+    }
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    const pinch = pinchRef.current;
+    if (e.touches.length === 2 && pinch) {
+      const ratio = touchDistance(e.touches) / pinch.distance;
+      setScale(Math.min(3, Math.max(0.4, +(pinch.scale * ratio).toFixed(2))));
+    }
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2 && pinchRef.current) {
+      pinchRef.current = null;
+      if (file) setViewerState(file.id, { scale });
+    }
+  };
+
   if (!file) {
     return (
       <div className="flex h-full flex-col">
@@ -261,6 +293,10 @@ export default function PdfViewerPane({
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ touchAction: "pan-y" }}
         className="flex-1 overflow-auto bg-slate-200 p-4"
       >
         {error && (

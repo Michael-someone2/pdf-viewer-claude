@@ -16,6 +16,7 @@ import {
   type FolderRecord,
   type PaneId,
 } from "@/lib/types";
+import { useLongPressDrag } from "@/lib/useLongPressDrag";
 
 export interface RenameState {
   type: "folder" | "file";
@@ -46,6 +47,12 @@ export interface FolderNodeProps {
   onMoveFolder: (folderId: string, targetFolderId: string | null) => void;
   dragOverTarget: string | null;
   onSetDragOverTarget: (target: string | null) => void;
+  onStartTouchDrag: (
+    payload: DragPayload,
+    label: string,
+    x: number,
+    y: number,
+  ) => void;
 }
 
 export default function FolderNode(props: FolderNodeProps) {
@@ -73,11 +80,19 @@ export default function FolderNode(props: FolderNodeProps) {
     onMoveFolder,
     dragOverTarget,
     onSetDragOverTarget,
+    onStartTouchDrag,
   } = props;
 
   const isExpanded = expanded.has(folder.id);
   const isActive = activeFolderId === folder.id;
   const isRenaming = renaming?.type === "folder" && renaming.id === folder.id;
+
+  const longPress = useLongPressDrag(
+    onStartTouchDrag,
+    { type: "folder", id: folder.id },
+    folder.name,
+    isRenaming,
+  );
 
   const childFolders = folders
     .filter((f) => f.parent_id === folder.id)
@@ -119,6 +134,11 @@ export default function FolderNode(props: FolderNodeProps) {
           if (payload.type === "file") onMoveFile(payload.id, folder.id);
           else onMoveFolder(payload.id, folder.id);
         }}
+        onTouchStart={longPress.onTouchStart}
+        onTouchMove={longPress.onTouchMove}
+        onTouchEnd={longPress.onTouchEnd}
+        onClickCapture={longPress.onClickCapture}
+        data-drop-target={folder.id}
         className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 ${
           isActive ? "bg-slate-100 font-medium" : ""
         } ${
@@ -171,7 +191,7 @@ export default function FolderNode(props: FolderNodeProps) {
           type="button"
           onClick={() => onStartRenameFolder(folder)}
           title="Переименовать"
-          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex"
+          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex"
         >
           <Pencil size={14} />
         </button>
@@ -179,7 +199,7 @@ export default function FolderNode(props: FolderNodeProps) {
           type="button"
           onClick={() => onDeleteFolder(folder)}
           title="Удалить папку"
-          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex"
+          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex [@media(hover:none)]:inline-flex"
         >
           <Trash2 size={14} />
         </button>
@@ -211,6 +231,7 @@ export default function FolderNode(props: FolderNodeProps) {
               onRenameCancel={onRenameCancel}
               onDelete={onDeleteFile}
               onSetDragOverTarget={onSetDragOverTarget}
+              onStartTouchDrag={onStartTouchDrag}
             />
           ))}
         </div>
