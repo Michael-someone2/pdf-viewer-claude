@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { FileRecord } from "@/lib/types";
+import { getViewerState, setViewerState } from "@/lib/viewerState";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -46,6 +47,12 @@ export default function PdfViewerPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const prevItemHeightRef = useRef<number | null>(null);
+  const pendingPageRef = useRef<number | null>(null);
+  const pageNumberRef = useRef(1);
+
+  useEffect(() => {
+    pageNumberRef.current = pageNumber;
+  }, [pageNumber]);
 
   useEffect(() => {
     setError(null);
@@ -55,9 +62,18 @@ export default function PdfViewerPane({
     setPageInput("1");
     setPageSize(null);
     prevItemHeightRef.current = null;
+    pendingPageRef.current = null;
     if (containerRef.current) containerRef.current.scrollTop = 0;
 
     if (!file) return;
+
+    const saved = getViewerState(file.id);
+    if (saved?.scale) setScale(saved.scale);
+    if (saved?.page && saved.page > 1) {
+      setPageNumber(saved.page);
+      setPageInput(String(saved.page));
+      pendingPageRef.current = saved.page;
+    }
 
     let active = true;
     setLoadingUrl(true);
@@ -94,6 +110,18 @@ export default function PdfViewerPane({
     prevItemHeightRef.current = newItemHeight;
   }, [scale, pageSize]);
 
+  // При открытии файла прокручиваем к сохранённой странице, как только
+  // становится известен размер страницы.
+  useEffect(() => {
+    const el = containerRef.current;
+    const pending = pendingPageRef.current;
+    if (!el || !pageSize || !pending) return;
+    const target = numPages ? Math.min(pending, numPages) : pending;
+    const itemHeight = pageSize.height * scale + PAGE_GAP;
+    el.scrollTop = (target - 1) * itemHeight;
+    pendingPageRef.current = null;
+  }, [pageSize, numPages, scale]);
+
   const handleScroll = useCallback(() => {
     if (scrollRafRef.current !== null) return;
     scrollRafRef.current = requestAnimationFrame(() => {
@@ -103,12 +131,15 @@ export default function PdfViewerPane({
       const itemHeight = pageSize.height * scale + PAGE_GAP;
       const idx = Math.floor(el.scrollTop / itemHeight) + 1;
       const clamped = Math.min(Math.max(idx, 1), numPages);
+      if (clamped !== pageNumberRef.current && file) {
+        setViewerState(file.id, { page: clamped });
+      }
       setPageNumber((prev) => (prev === clamped ? prev : clamped));
       setPageInput((prev) =>
         prev === String(clamped) ? prev : String(clamped),
       );
     });
-  }, [pageSize, scale, numPages]);
+  }, [pageSize, scale, numPages, file]);
 
   const goToPage = (page: number) => {
     if (!Number.isFinite(page)) {
@@ -119,11 +150,18 @@ export default function PdfViewerPane({
     const clamped = Math.min(Math.max(Math.round(page), 1), max);
     setPageNumber(clamped);
     setPageInput(String(clamped));
+    if (file) setViewerState(file.id, { page: clamped });
     const el = containerRef.current;
     if (el && pageSize) {
       const itemHeight = pageSize.height * scale + PAGE_GAP;
       el.scrollTop = (clamped - 1) * itemHeight;
     }
+  };
+
+  const adjustScale = (delta: number) => {
+    const next = Math.min(3, Math.max(0.4, +(scale + delta).toFixed(2)));
+    setScale(next);
+    if (file) setViewerState(file.id, { scale: next });
   };
 
   if (!file) {
@@ -173,9 +211,7 @@ export default function PdfViewerPane({
               className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-xs focus:outline-none"
               inputMode="numeric"
             />
-            <span className="text-xs text-slate-400">
-              / {numPages || "?"}
-            </span>
+            <span className="text-xs text-slate-400">/ {numPages || "?"}</span>
           </form>
           <button
             type="button"
@@ -191,9 +227,7 @@ export default function PdfViewerPane({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() =>
-              setScale((s) => Math.max(0.4, +(s - 0.1).toFixed(2)))
-            }
+            onClick={() => adjustScale(-0.1)}
             className="rounded p-1 text-slate-500 hover:bg-slate-100"
             title="Уменьшить"
           >
@@ -204,9 +238,7 @@ export default function PdfViewerPane({
           </span>
           <button
             type="button"
-            onClick={() =>
-              setScale((s) => Math.min(3, +(s + 0.1).toFixed(2)))
-            }
+            onClick={() => adjustScale(0.1)}
             className="rounded p-1 text-slate-500 hover:bg-slate-100"
             title="Увеличить"
           >
@@ -264,23 +296,21 @@ export default function PdfViewerPane({
           >
             {pageSize && (
               <div className="flex flex-col items-center">
-                {Array.from({ length: numPages }, (_, i) => i + 1).map(
-                  (p) => (
-                    <div
-                      key={p}
-                      style={{
-                        width: pageSize.width * scale,
-                        height: pageSize.height * scale,
-                        marginBottom: PAGE_GAP,
-                      }}
-                      className="bg-white shadow"
-                    >
-                      {Math.abs(p - pageNumber) <= RENDER_BUFFER && (
-                        <Page pageNumber={p} scale={scale} loading={null} />
-                      )}
-                    </div>
-                  ),
-                )}
+                {Array.from({ length: numPages }, (_, i) => i + 1).map((p) => (
+                  <div
+                    key={p}
+                    style={{
+                      width: pageSize.width * scale,
+                      height: pageSize.height * scale,
+                      marginBottom: PAGE_GAP,
+                    }}
+                    className="bg-white shadow"
+                  >
+                    {Math.abs(p - pageNumber) <= RENDER_BUFFER && (
+                      <Page pageNumber={p} scale={scale} loading={null} />
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </Document>
