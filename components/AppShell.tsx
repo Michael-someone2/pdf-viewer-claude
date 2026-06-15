@@ -42,7 +42,7 @@ export default function AppShell({ userEmail }: AppShellProps) {
           <h1 className="text-base font-semibold text-slate-900">
             PDF Просмотрщик
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 gap-y-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setSplitEnabled((s) => !s)}
@@ -54,7 +54,7 @@ export default function AppShell({ userEmail }: AppShellProps) {
               title="Показать вторую панель просмотра"
             >
               <Columns2 size={14} />
-              Разделить экран
+              <span className="hidden sm:inline">Разделить экран</span>
             </button>
             <button
               type="button"
@@ -63,7 +63,7 @@ export default function AppShell({ userEmail }: AppShellProps) {
               title="Скрыть интерфейс (выход — Esc)"
             >
               <Maximize2 size={14} />
-              Скрыть интерфейс
+              <span className="hidden sm:inline">Скрыть интерфейс</span>
             </button>
             <span className="hidden text-xs text-slate-500 sm:inline">
               {userEmail}
@@ -74,7 +74,7 @@ export default function AppShell({ userEmail }: AppShellProps) {
                 className="flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 <LogOut size={14} />
-                Выйти
+                <span className="hidden sm:inline">Выйти</span>
               </button>
             </form>
           </div>
