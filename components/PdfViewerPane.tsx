@@ -313,7 +313,12 @@ export default function PdfViewerPane({
     }
   };
 
-  // ── Pinch-to-zoom ──────────────────────────────────────────────────
+  // ── Touch: manual pan + pinch-zoom ─────────────────────────────────
+  // На Windows-тачскрине Chrome зумит страницу через Direct Manipulation,
+  // игнорируя touch-action: pan-y, а touchmove приходит неотменяемым — поэтому
+  // ни CSS, ни preventDefault не помогают. Решение: touch-action: none на
+  // контейнере (браузер не делает НИКАКИХ жестов) и реализация прокрутки/зума
+  // полностью на JS. setScrollTop триггерит onScroll → трекинг страницы работает.
   const scaleRef = useRef(scale);
   const fileRef = useRef(file);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
@@ -323,38 +328,99 @@ export default function PdfViewerPane({
     const el = containerRef.current;
     if (!el) return;
 
-    let pinch: { distance: number; scale: number } | null = null;
+    type Mode = "none" | "pan" | "pinch";
+    let mode: Mode = "none";
+    let pinchDist = 0;
+    let pinchScale = 1;
+    let lastY = 0;
+    let lastT = 0;
+    let velocity = 0; // px/ms, для инерции
+    let inertiaRaf: number | null = null;
 
     const dist = (t: TouchList) =>
       Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 
-    const onStart = (e: TouchEvent) => {
-      pinch = e.touches.length === 2
-        ? { distance: dist(e.touches), scale: scaleRef.current }
-        : null;
-    };
-
-    const onMove = (e: TouchEvent) => {
-      if (e.touches.length !== 2 || !pinch) return;
-      e.preventDefault();
-      const next = Math.min(3, Math.max(0.4, +(pinch.scale * (dist(e.touches) / pinch.distance)).toFixed(2)));
-      scaleRef.current = next;
-      setScale(next);
-    };
-
-    const onEnd = () => {
-      if (pinch) {
-        if (fileRef.current) setViewerState(fileRef.current.id, { scale: scaleRef.current });
-        pinch = null;
+    const stopInertia = () => {
+      if (inertiaRaf !== null) {
+        cancelAnimationFrame(inertiaRaf);
+        inertiaRaf = null;
       }
     };
 
-    el.addEventListener("touchstart", onStart, { passive: true });
+    const startInertia = () => {
+      stopInertia();
+      const step = () => {
+        if (Math.abs(velocity) < 0.02) {
+          inertiaRaf = null;
+          return;
+        }
+        el.scrollTop -= velocity * 16; // ~16ms на кадр
+        velocity *= 0.95; // трение
+        inertiaRaf = requestAnimationFrame(step);
+      };
+      inertiaRaf = requestAnimationFrame(step);
+    };
+
+    const onStart = (e: TouchEvent) => {
+      stopInertia();
+      if (e.touches.length >= 2) {
+        mode = "pinch";
+        pinchDist = dist(e.touches);
+        pinchScale = scaleRef.current;
+      } else if (e.touches.length === 1) {
+        mode = "pan";
+        lastY = e.touches[0].clientY;
+        lastT = e.timeStamp;
+        velocity = 0;
+      }
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (mode === "pinch" && e.touches.length >= 2) {
+        e.preventDefault();
+        const next = Math.min(
+          3,
+          Math.max(0.4, +(pinchScale * (dist(e.touches) / pinchDist)).toFixed(2)),
+        );
+        scaleRef.current = next;
+        setScale(next);
+      } else if (mode === "pan" && e.touches.length === 1) {
+        e.preventDefault();
+        const y = e.touches[0].clientY;
+        const dy = y - lastY;
+        const dt = e.timeStamp - lastT || 16;
+        el.scrollTop -= dy;
+        velocity = dy / dt;
+        lastY = y;
+        lastT = e.timeStamp;
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (mode === "pinch") {
+        if (fileRef.current)
+          setViewerState(fileRef.current.id, { scale: scaleRef.current });
+      } else if (mode === "pan") {
+        startInertia();
+      }
+      // Переход 2→1 палец: продолжаем как pan оставшимся пальцем без рывка
+      if (e.touches.length === 1) {
+        mode = "pan";
+        lastY = e.touches[0].clientY;
+        lastT = e.timeStamp;
+        velocity = 0;
+      } else if (e.touches.length === 0) {
+        mode = "none";
+      }
+    };
+
+    el.addEventListener("touchstart", onStart, { passive: false });
     el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd);
-    el.addEventListener("touchcancel", onEnd);
+    el.addEventListener("touchend", onEnd, { passive: false });
+    el.addEventListener("touchcancel", onEnd, { passive: false });
 
     return () => {
+      stopInertia();
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchmove", onMove);
       el.removeEventListener("touchend", onEnd);
@@ -564,7 +630,7 @@ export default function PdfViewerPane({
           ref={containerRef}
           onScroll={handleScroll}
           data-pdf-scroll
-          style={{ touchAction: "pan-y" }}
+          style={{ touchAction: "none" }}
           className="flex-1 overflow-auto bg-slate-200 p-4 dark:bg-zinc-950"
         >
           {error && (
