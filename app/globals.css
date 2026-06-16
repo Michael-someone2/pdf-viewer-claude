@@ -5,6 +5,7 @@
 html,
 body {
   height: 100%;
+  touch-action: pan-x pan-y; /* запрещаем браузерный пинч-зум страницы */
 }
 
 * {

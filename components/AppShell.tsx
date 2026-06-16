@@ -14,19 +14,6 @@ import FileBrowser from "./FileBrowser";
 import SplitViewer from "./SplitViewer";
 import type { FileRecord, PaneId } from "@/lib/types";
 
-// Блокируем браузерный пинч-зум страницы глобально.
-// PDF-зум работает через JS (setScale) и не зависит от preventDefault.
-if (typeof document !== "undefined") {
-  document.addEventListener(
-    "touchmove",
-    (e) => { if (e.touches.length > 1) e.preventDefault(); },
-    { passive: false },
-  );
-  // Safari использует gesturestart/gesturechange вместо touchmove для пинча
-  document.addEventListener("gesturestart", (e) => e.preventDefault());
-  document.addEventListener("gesturechange", (e) => e.preventDefault());
-}
-
 interface AppShellProps {
   userEmail: string;
 }

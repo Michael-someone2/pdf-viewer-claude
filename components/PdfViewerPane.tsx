@@ -314,53 +314,53 @@ export default function PdfViewerPane({
   };
 
   // ── Pinch-to-zoom ──────────────────────────────────────────────────
-  const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
   const scaleRef = useRef(scale);
   const fileRef = useRef(file);
-
   useEffect(() => { scaleRef.current = scale; }, [scale]);
   useEffect(() => { fileRef.current = file; }, [file]);
 
-  const touchDistance = (touches: TouchList) => {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.hypot(dx, dy);
-  };
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      pinchRef.current = { distance: touchDistance(e.touches as unknown as TouchList), scale: scaleRef.current };
-    }
-  };
-
-  // Native (non-passive) touchmove to block browser page zoom on 2-finger gesture
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length < 2) return;
-      e.preventDefault(); // блокируем зум браузера для любого мульти-тача
-      if (e.touches.length !== 2) return; // зум PDF только 2 пальцами
-      const pinch = pinchRef.current;
-      if (!pinch) return;
-      const ratio = touchDistance(e.touches) / pinch.distance;
-      setScale(Math.min(3, Math.max(0.4, +(pinch.scale * ratio).toFixed(2))));
+    let pinch: { distance: number; scale: number } | null = null;
+
+    const dist = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+    const onStart = (e: TouchEvent) => {
+      pinch = e.touches.length === 2
+        ? { distance: dist(e.touches), scale: scaleRef.current }
+        : null;
     };
 
-    el.addEventListener("touchmove", handleTouchMove, { passive: false });
-    return () => el.removeEventListener("touchmove", handleTouchMove);
-  // file в deps: при file=null containerRef.current=null и listener не регистрируется;
-  // re-run при смене файла гарантирует регистрацию на реальном DOM-элементе
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file]);
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !pinch) return;
+      e.preventDefault();
+      const next = Math.min(3, Math.max(0.4, +(pinch.scale * (dist(e.touches) / pinch.distance)).toFixed(2)));
+      scaleRef.current = next;
+      setScale(next);
+    };
 
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (e.touches.length < 2 && pinchRef.current) {
-      pinchRef.current = null;
-      if (fileRef.current) setViewerState(fileRef.current.id, { scale: scaleRef.current });
-    }
-  };
+    const onEnd = () => {
+      if (pinch) {
+        if (fileRef.current) setViewerState(fileRef.current.id, { scale: scaleRef.current });
+        pinch = null;
+      }
+    };
+
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [file]); // file в deps: containerRef.current=null пока file=null (early return)
 
   if (!file) {
     return (
@@ -563,8 +563,6 @@ export default function PdfViewerPane({
         <div
           ref={containerRef}
           onScroll={handleScroll}
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
           data-pdf-scroll
           style={{ touchAction: "pan-y" }}
           className="flex-1 overflow-auto bg-slate-200 p-4 dark:bg-zinc-950"
