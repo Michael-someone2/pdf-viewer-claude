@@ -46,5 +46,25 @@ export default function ZoomGuard() {
     };
   }, []);
 
-  return null;
+  // ВРЕМЕННЫЙ диагностический маркер: подтверждает, что новый код реально
+  // загрузился на устройстве. Если этой плашки нет — значит до сайта доходит
+  // старая сборка (кэш/деплой), и проблема не в коде. Уберём после проверки.
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: 4,
+        bottom: 4,
+        zIndex: 99999,
+        background: "red",
+        color: "white",
+        font: "bold 11px monospace",
+        padding: "2px 5px",
+        borderRadius: 4,
+        pointerEvents: "none",
+      }}
+    >
+      ZG
+    </div>
+  );
 }
