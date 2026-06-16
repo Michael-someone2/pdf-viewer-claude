@@ -339,8 +339,9 @@ export default function PdfViewerPane({
     if (!el) return;
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 2) return;
-      e.preventDefault(); // блокируем зум браузера
+      if (e.touches.length < 2) return;
+      e.preventDefault(); // блокируем зум браузера для любого мульти-тача
+      if (e.touches.length !== 2) return; // зум PDF только 2 пальцами
       const pinch = pinchRef.current;
       if (!pinch) return;
       const ratio = touchDistance(e.touches) / pinch.distance;
