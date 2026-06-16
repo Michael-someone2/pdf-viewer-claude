@@ -8,6 +8,12 @@ body {
   touch-action: pan-x pan-y; /* запрещаем браузерный пинч-зум страницы */
 }
 
+/* touch-action не наследуется — canvas и другие элементы внутри PDF-контейнера
+   по умолчанию имеют auto, что даёт браузеру зумить страницу при пинче на PDF */
+[data-pdf-scroll] * {
+  touch-action: pan-y;
+}
+
 * {
   box-sizing: border-box;
 }
