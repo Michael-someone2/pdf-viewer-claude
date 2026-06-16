@@ -5,6 +5,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import {
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -21,6 +22,50 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.vers
 
 const PAGE_GAP = 16;
 const RENDER_BUFFER = 2;
+
+interface OutlineItem {
+  title: string;
+  dest: string | any[] | null;
+  items: OutlineItem[];
+  bold?: boolean;
+}
+
+function OutlineTree({
+  items,
+  depth = 0,
+  onNavigate,
+}: {
+  items: OutlineItem[];
+  depth?: number;
+  onNavigate: (dest: string | any[] | null) => void;
+}) {
+  return (
+    <>
+      {items.map((item, i) => (
+        <div key={i}>
+          <button
+            type="button"
+            onClick={() => onNavigate(item.dest)}
+            style={{ paddingLeft: `${depth * 10 + 8}px` }}
+            className={`w-full truncate rounded py-0.5 pr-2 text-left text-[11px] leading-5 hover:bg-slate-100 dark:hover:bg-zinc-800 ${
+              item.bold ? "font-semibold" : ""
+            } text-slate-700 dark:text-zinc-300`}
+            title={item.title}
+          >
+            {item.title}
+          </button>
+          {item.items?.length > 0 && (
+            <OutlineTree
+              items={item.items}
+              depth={depth + 1}
+              onNavigate={onNavigate}
+            />
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
 
 interface PdfViewerPaneProps {
   file: FileRecord | null;
@@ -44,6 +89,10 @@ export default function PdfViewerPane({
   } | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Outline (Table of Contents) ────────────────────────────────────
+  const [outline, setOutline] = useState<OutlineItem[] | null>(null);
+  const [outlineOpen, setOutlineOpen] = useState(false);
 
   // ── Text search ────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -77,7 +126,9 @@ export default function PdfViewerPane({
     pendingPageRef.current = null;
     if (containerRef.current) containerRef.current.scrollTop = 0;
 
-    // Reset search state for new file
+    // Reset outline and search state for new file
+    setOutline(null);
+    setOutlineOpen(false);
     setSearchOpen(false);
     setSearchQuery("");
     setSearchPages([]);
@@ -246,6 +297,22 @@ export default function PdfViewerPane({
     setSearchIdx(0);
   };
 
+  // ── Outline navigation ─────────────────────────────────────────────
+
+  const handleOutlineClick = async (dest: string | any[] | null) => {
+    if (!dest || !pdfDocRef.current) return;
+    try {
+      const resolved = Array.isArray(dest)
+        ? dest
+        : await pdfDocRef.current.getDestination(dest as string);
+      if (!resolved) return;
+      const pageIndex = await pdfDocRef.current.getPageIndex(resolved[0]);
+      goToPage(pageIndex + 1);
+    } catch {
+      // некоторые PDF имеют невалидные destination-ы
+    }
+  };
+
   // ── Pinch-to-zoom ──────────────────────────────────────────────────
   const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
 
@@ -377,6 +444,24 @@ export default function PdfViewerPane({
             <Search size={16} />
           </button>
 
+          {outline !== null && (
+            <button
+              type="button"
+              onClick={() => setOutlineOpen((v) => !v)}
+              className={`rounded p-1 transition-colors ${
+                outlineOpen
+                  ? "bg-blue-50 text-blue-600 dark:bg-violet-900/40 dark:text-violet-400"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              }`}
+              title={
+                outline.length === 0 ? "Оглавление отсутствует" : "Оглавление"
+              }
+              disabled={outline.length === 0}
+            >
+              <BookOpen size={16} />
+            </button>
+          )}
+
           {onClose && (
             <button
               type="button"
@@ -449,72 +534,84 @@ export default function PdfViewerPane({
         )}
       </div>
 
-      {/* ── PDF scroll area ── */}
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        style={{ touchAction: "pan-y" }}
-        className="flex-1 overflow-auto bg-slate-200 p-4 dark:bg-zinc-950"
-      >
-        {error && (
-          <p className="mx-auto max-w-md rounded bg-red-50 px-3 py-2 text-center text-sm text-red-700 dark:bg-red-950 dark:text-red-400">
-            {error}
-          </p>
+      {/* ── PDF content area (outline sidebar + scroll) ── */}
+      <div className="flex flex-1 overflow-hidden">
+        {outlineOpen && outline && outline.length > 0 && (
+          <aside className="w-52 shrink-0 overflow-y-auto border-r border-slate-200 bg-white py-1 dark:border-zinc-800 dark:bg-zinc-900">
+            <OutlineTree items={outline} onNavigate={handleOutlineClick} />
+          </aside>
         )}
-        {loadingUrl && (
-          <div className="flex h-full items-center justify-center text-slate-400 dark:text-zinc-600">
-            <Loader2 size={24} className="animate-spin" />
-          </div>
-        )}
-        {url && (
-          <Document
-            key={url}
-            file={url}
-            onLoadSuccess={(pdf) => {
-              setNumPages(pdf.numPages);
-              if (file) setViewerState(file.id, { totalPages: pdf.numPages });
-              pdfDocRef.current = pdf;
-              const gen = indexGenRef.current;
-              buildTextIndex(pdf, gen);
-              pdf.getPage(1).then((page: any) => {
-                const viewport = page.getViewport({ scale: 1 });
-                setPageSize({
-                  width: viewport.width,
-                  height: viewport.height,
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          style={{ touchAction: "pan-y" }}
+          className="flex-1 overflow-auto bg-slate-200 p-4 dark:bg-zinc-950"
+        >
+          {error && (
+            <p className="mx-auto max-w-md rounded bg-red-50 px-3 py-2 text-center text-sm text-red-700 dark:bg-red-950 dark:text-red-400">
+              {error}
+            </p>
+          )}
+          {loadingUrl && (
+            <div className="flex h-full items-center justify-center text-slate-400 dark:text-zinc-600">
+              <Loader2 size={24} className="animate-spin" />
+            </div>
+          )}
+          {url && (
+            <Document
+              key={url}
+              file={url}
+              onLoadSuccess={(pdf) => {
+                setNumPages(pdf.numPages);
+                if (file) setViewerState(file.id, { totalPages: pdf.numPages });
+                pdfDocRef.current = pdf;
+                const gen = indexGenRef.current;
+                buildTextIndex(pdf, gen);
+                pdf.getOutline().then((items: any) => {
+                  setOutline(items ?? []);
                 });
-              });
-            }}
-            onLoadError={() => setError("Не удалось открыть PDF-файл")}
-            loading={
-              <div className="flex h-96 items-center justify-center text-slate-400 dark:text-zinc-600">
-                <Loader2 size={24} className="animate-spin" />
-              </div>
-            }
-          >
-            {pageSize && (
-              <div className="flex flex-col items-center">
-                {Array.from({ length: numPages }, (_, i) => i + 1).map((p) => (
-                  <div
-                    key={p}
-                    style={{
-                      width: pageSize.width * scale,
-                      height: pageSize.height * scale,
-                      marginBottom: PAGE_GAP,
-                    }}
-                    className="bg-white shadow-md dark:shadow-black/60"
-                  >
-                    {Math.abs(p - pageNumber) <= RENDER_BUFFER && (
-                      <Page pageNumber={p} scale={scale} loading={null} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Document>
-        )}
+                pdf.getPage(1).then((page: any) => {
+                  const viewport = page.getViewport({ scale: 1 });
+                  setPageSize({
+                    width: viewport.width,
+                    height: viewport.height,
+                  });
+                });
+              }}
+              onLoadError={() => setError("Не удалось открыть PDF-файл")}
+              loading={
+                <div className="flex h-96 items-center justify-center text-slate-400 dark:text-zinc-600">
+                  <Loader2 size={24} className="animate-spin" />
+                </div>
+              }
+            >
+              {pageSize && (
+                <div className="flex flex-col items-center">
+                  {Array.from({ length: numPages }, (_, i) => i + 1).map(
+                    (p) => (
+                      <div
+                        key={p}
+                        style={{
+                          width: pageSize.width * scale,
+                          height: pageSize.height * scale,
+                          marginBottom: PAGE_GAP,
+                        }}
+                        className="bg-white shadow-md dark:shadow-black/60"
+                      >
+                        {Math.abs(p - pageNumber) <= RENDER_BUFFER && (
+                          <Page pageNumber={p} scale={scale} loading={null} />
+                        )}
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+            </Document>
+          )}
+        </div>
       </div>
     </div>
   );
