@@ -562,6 +562,7 @@ export default function PdfViewerPane({
           onScroll={handleScroll}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
+          data-pdf-scroll
           style={{ touchAction: "pan-y" }}
           className="flex-1 overflow-auto bg-slate-200 p-4 dark:bg-zinc-950"
         >

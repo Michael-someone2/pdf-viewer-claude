@@ -14,11 +14,16 @@ import FileBrowser from "./FileBrowser";
 import SplitViewer from "./SplitViewer";
 import type { FileRecord, PaneId } from "@/lib/types";
 
-// Запрещаем браузерный пинч-зум на всей странице
+// Блокируем браузерный пинч-зум страницы везде, кроме PDF-контейнера
+// (внутри PDF-контейнера зум обрабатывается отдельным нативным listener'ом)
 if (typeof document !== "undefined") {
   document.addEventListener(
     "touchmove",
-    (e) => { if (e.touches.length > 1) e.preventDefault(); },
+    (e) => {
+      if (e.touches.length > 1 && !(e.target as Element).closest?.("[data-pdf-scroll]")) {
+        e.preventDefault();
+      }
+    },
     { passive: false },
   );
 }
