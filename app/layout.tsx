@@ -1,9 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PDF Просмотрщик",
   description: "Просмотр и хранение PDF-файлов с разделённым экраном",
+};
+
+export const viewport: Viewport = {
+  userScalable: false,
 };
 
 export default function RootLayout({

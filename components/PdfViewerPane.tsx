@@ -315,8 +315,13 @@ export default function PdfViewerPane({
 
   // ── Pinch-to-zoom ──────────────────────────────────────────────────
   const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
+  const scaleRef = useRef(scale);
+  const fileRef = useRef(file);
 
-  const touchDistance = (touches: React.TouchList) => {
+  useEffect(() => { scaleRef.current = scale; }, [scale]);
+  useEffect(() => { fileRef.current = file; }, [file]);
+
+  const touchDistance = (touches: TouchList) => {
     const dx = touches[0].clientX - touches[1].clientX;
     const dy = touches[0].clientY - touches[1].clientY;
     return Math.hypot(dx, dy);
@@ -324,22 +329,33 @@ export default function PdfViewerPane({
 
   const onTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
-      pinchRef.current = { distance: touchDistance(e.touches), scale };
+      pinchRef.current = { distance: touchDistance(e.touches as unknown as TouchList), scale: scaleRef.current };
     }
   };
 
-  const onTouchMove = (e: React.TouchEvent) => {
-    const pinch = pinchRef.current;
-    if (e.touches.length === 2 && pinch) {
+  // Native (non-passive) touchmove to block browser page zoom on 2-finger gesture
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      e.preventDefault(); // блокируем зум браузера
+      const pinch = pinchRef.current;
+      if (!pinch) return;
       const ratio = touchDistance(e.touches) / pinch.distance;
       setScale(Math.min(3, Math.max(0.4, +(pinch.scale * ratio).toFixed(2))));
-    }
-  };
+    };
+
+    el.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", handleTouchMove);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onTouchEnd = (e: React.TouchEvent) => {
     if (e.touches.length < 2 && pinchRef.current) {
       pinchRef.current = null;
-      if (file) setViewerState(file.id, { scale });
+      if (fileRef.current) setViewerState(fileRef.current.id, { scale: scaleRef.current });
     }
   };
 
@@ -545,7 +561,6 @@ export default function PdfViewerPane({
           ref={containerRef}
           onScroll={handleScroll}
           onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
           style={{ touchAction: "pan-y" }}
           className="flex-1 overflow-auto bg-slate-200 p-4 dark:bg-zinc-950"
