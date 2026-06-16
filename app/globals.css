@@ -5,13 +5,21 @@
 html,
 body {
   height: 100%;
-  touch-action: pan-x pan-y; /* запрещаем браузерный пинч-зум страницы */
+  /* pan-x/pan-y разрешены, pinch-zoom запрещён на уровне compositor-потока */
+  touch-action: pan-x pan-y;
 }
 
-/* touch-action не наследуется — canvas и другие элементы внутри PDF-контейнера
-   по умолчанию имеют auto, что даёт браузеру зумить страницу при пинче на PDF */
+/* КЛЮЧЕВОЕ: touch-action НЕ наследуется. У <canvas> и текстового слоя react-pdf
+   он по умолчанию `auto`, из-за чего Chrome запускает зум всей страницы на
+   compositor-потоке ДО того, как JS успеет вызвать preventDefault.
+   Принудительно ставим pan-y на сам контейнер и ВСЕ его потомки (canvas,
+   textLayer, annotationLayer) через !important — это перебивает любые стили
+   react-pdf независимо от специфичности. Пинч-зум страницы становится
+   невозможен, но touch-события всё равно доходят до нашего JS, который
+   масштабирует только PDF. */
+[data-pdf-scroll],
 [data-pdf-scroll] * {
-  touch-action: pan-y;
+  touch-action: pan-y !important;
 }
 
 * {
