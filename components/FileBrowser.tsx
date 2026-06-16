@@ -358,8 +358,8 @@ export default function FileBrowser({
     : "Корень";
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-slate-200 bg-white">
-      <div className="border-b border-slate-200 p-3">
+    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="border-b border-slate-200 p-3 dark:border-zinc-800">
         <div className="mb-2 flex gap-2">
           <button
             type="button"
@@ -367,12 +367,12 @@ export default function FileBrowser({
               setCreatingFolder(true);
               setNewFolderName("");
             }}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >
             <FolderPlus size={14} />
             Новая папка
           </button>
-          <label className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-slate-900 px-2 py-1.5 text-xs font-medium text-white hover:bg-slate-700">
+          <label className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-slate-900 px-2 py-1.5 text-xs font-medium text-white hover:bg-slate-700 dark:bg-violet-600 dark:hover:bg-violet-500">
             {uploading ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
@@ -392,9 +392,11 @@ export default function FileBrowser({
             />
           </label>
         </div>
-        <p className="truncate text-xs text-slate-500">
+        <p className="truncate text-xs text-slate-500 dark:text-zinc-500">
           Текущая папка:{" "}
-          <span className="font-medium text-slate-700">{activeFolderName}</span>
+          <span className="font-medium text-slate-700 dark:text-zinc-300">
+            {activeFolderName}
+          </span>
         </p>
         {creatingFolder && (
           <div className="mt-2 flex gap-1.5">
@@ -407,23 +409,25 @@ export default function FileBrowser({
                 if (e.key === "Escape") setCreatingFolder(false);
               }}
               placeholder="Название папки"
-              className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none"
+              className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:placeholder-zinc-600"
             />
             <button
               type="button"
               onClick={handleCreateFolder}
-              className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-700"
+              className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-700 dark:bg-violet-600 dark:hover:bg-violet-500"
             >
               ОК
             </button>
           </div>
         )}
-        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        {error && (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
         {loading ? (
-          <div className="flex items-center justify-center py-8 text-slate-400">
+          <div className="flex items-center justify-center py-8 text-slate-400 dark:text-zinc-600">
             <Loader2 size={18} className="animate-spin" />
           </div>
         ) : (
@@ -450,13 +454,14 @@ export default function FileBrowser({
                 else handleMoveFolder(payload.id, null);
               }}
               data-drop-target="root"
-              className={`mb-1 w-full rounded px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide ${
+              className={[
+                "mb-1 w-full rounded px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide",
                 dragOverTarget === "root"
-                  ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
+                  ? "bg-blue-50 ring-1 ring-inset ring-blue-300 dark:bg-violet-900/40 dark:ring-violet-500"
                   : activeFolderId === null
-                    ? "bg-slate-100 text-slate-700"
-                    : "text-slate-400 hover:bg-slate-50"
-              }`}
+                    ? "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-200"
+                    : "text-slate-400 hover:bg-slate-50 dark:text-zinc-600 dark:hover:bg-zinc-800",
+              ].join(" ")}
             >
               Корень
             </button>
@@ -511,7 +516,7 @@ export default function FileBrowser({
               />
             ))}
             {rootFolders.length === 0 && rootFiles.length === 0 && (
-              <p className="px-2 py-4 text-center text-xs text-slate-400">
+              <p className="px-2 py-4 text-center text-xs text-slate-400 dark:text-zinc-600">
                 Пока нет файлов. Загрузите PDF, чтобы начать.
               </p>
             )}
@@ -521,7 +526,7 @@ export default function FileBrowser({
 
       {touchDrag && ghostPos && (
         <div
-          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-900 shadow-lg"
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-900 shadow-lg dark:border-violet-500 dark:bg-violet-950 dark:text-violet-200"
           style={{ left: ghostPos.x, top: ghostPos.y }}
         >
           {touchDrag.label}

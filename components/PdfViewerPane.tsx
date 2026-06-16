@@ -198,11 +198,11 @@ export default function PdfViewerPane({
 
   if (!file) {
     return (
-      <div className="flex h-full flex-col">
-        <div className="border-b border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500">
+      <div className="flex h-full flex-col bg-white dark:bg-zinc-950">
+        <div className="border-b border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500">
           {label}
         </div>
-        <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
+        <div className="flex flex-1 items-center justify-center text-sm text-slate-400 dark:text-zinc-600">
           Выберите файл в списке слева
         </div>
       </div>
@@ -210,10 +210,11 @@ export default function PdfViewerPane({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+    // dark:flex-col-reverse перемещает тулбар вниз в тёмном режиме
+    <div className="flex h-full flex-col dark:flex-col-reverse">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-t dark:border-b-0 dark:border-zinc-800 dark:bg-zinc-900">
         <span
-          className="min-w-0 flex-1 truncate text-sm font-medium"
+          className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-zinc-100"
           title={file.name}
         >
           {file.name}
@@ -224,7 +225,7 @@ export default function PdfViewerPane({
             type="button"
             onClick={() => goToPage(pageNumber - 1)}
             disabled={pageNumber <= 1}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
             title="Предыдущая страница"
           >
             <ChevronLeft size={16} />
@@ -240,16 +241,18 @@ export default function PdfViewerPane({
               value={pageInput}
               onChange={(e) => setPageInput(e.target.value)}
               onBlur={() => goToPage(Number(pageInput))}
-              className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-xs focus:outline-none"
+              className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-xs focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
               inputMode="numeric"
             />
-            <span className="text-xs text-slate-400">/ {numPages || "?"}</span>
+            <span className="text-xs text-slate-400 dark:text-zinc-500">
+              / {numPages || "?"}
+            </span>
           </form>
           <button
             type="button"
             onClick={() => goToPage(pageNumber + 1)}
             disabled={pageNumber >= numPages}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
             title="Следующая страница"
           >
             <ChevronRight size={16} />
@@ -260,18 +263,18 @@ export default function PdfViewerPane({
           <button
             type="button"
             onClick={() => adjustScale(-0.1)}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
             title="Уменьшить"
           >
             <ZoomOut size={16} />
           </button>
-          <span className="w-10 text-center text-xs text-slate-500">
+          <span className="w-10 text-center text-xs text-slate-500 dark:text-zinc-400">
             {Math.round(scale * 100)}%
           </span>
           <button
             type="button"
             onClick={() => adjustScale(0.1)}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
             title="Увеличить"
           >
             <ZoomIn size={16} />
@@ -282,7 +285,7 @@ export default function PdfViewerPane({
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-red-400"
             title="Закрыть панель"
           >
             <X size={16} />
@@ -297,15 +300,15 @@ export default function PdfViewerPane({
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         style={{ touchAction: "pan-y" }}
-        className="flex-1 overflow-auto bg-slate-200 p-4"
+        className="flex-1 overflow-auto bg-slate-200 p-4 dark:bg-zinc-950"
       >
         {error && (
-          <p className="mx-auto max-w-md rounded bg-red-50 px-3 py-2 text-center text-sm text-red-700">
+          <p className="mx-auto max-w-md rounded bg-red-50 px-3 py-2 text-center text-sm text-red-700 dark:bg-red-950 dark:text-red-400">
             {error}
           </p>
         )}
         {loadingUrl && (
-          <div className="flex h-full items-center justify-center text-slate-400">
+          <div className="flex h-full items-center justify-center text-slate-400 dark:text-zinc-600">
             <Loader2 size={24} className="animate-spin" />
           </div>
         )}
@@ -325,7 +328,7 @@ export default function PdfViewerPane({
             }}
             onLoadError={() => setError("Не удалось открыть PDF-файл")}
             loading={
-              <div className="flex h-96 items-center justify-center text-slate-400">
+              <div className="flex h-96 items-center justify-center text-slate-400 dark:text-zinc-600">
                 <Loader2 size={24} className="animate-spin" />
               </div>
             }
@@ -340,7 +343,7 @@ export default function PdfViewerPane({
                       height: pageSize.height * scale,
                       marginBottom: PAGE_GAP,
                     }}
-                    className="bg-white shadow"
+                    className="bg-white shadow-md dark:shadow-black/60"
                   >
                     {Math.abs(p - pageNumber) <= RENDER_BUFFER && (
                       <Page pageNumber={p} scale={scale} loading={null} />

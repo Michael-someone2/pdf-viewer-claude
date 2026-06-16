@@ -31,7 +31,7 @@ export default function SplitViewer({
       <div
         className={
           splitEnabled
-            ? "h-full w-1/2 border-r border-slate-200"
+            ? "h-full w-1/2 border-r border-slate-200 dark:border-zinc-800"
             : "h-full w-full"
         }
       >

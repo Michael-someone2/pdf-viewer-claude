@@ -70,12 +70,12 @@ export default function FileRow({
       onTouchMove={longPress.onTouchMove}
       onTouchEnd={longPress.onTouchEnd}
       onClickCapture={longPress.onClickCapture}
-      className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 ${
-        isActiveLeft || isActiveRight ? "bg-slate-100" : ""
+      className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-zinc-800 ${
+        isActiveLeft || isActiveRight ? "bg-slate-100 dark:bg-zinc-800" : ""
       }`}
       style={{ paddingLeft: `${level * 16 + 24}px` }}
     >
-      <FileText size={15} className="shrink-0 text-red-500" />
+      <FileText size={15} className="shrink-0 text-red-500 dark:text-red-400" />
 
       {isRenaming ? (
         <input
@@ -87,26 +87,26 @@ export default function FileRow({
             if (e.key === "Escape") onRenameCancel();
           }}
           onBlur={onRenameSubmit}
-          className="min-w-0 flex-1 rounded border border-slate-300 px-1 py-0.5 text-sm focus:outline-none"
+          className="min-w-0 flex-1 rounded border border-slate-300 px-1 py-0.5 text-sm focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
         />
       ) : (
         <button
           type="button"
           onClick={() => onOpen(file, "left")}
-          className="min-w-0 flex-1 truncate text-left"
+          className="min-w-0 flex-1 truncate text-left text-slate-700 dark:text-zinc-200"
           title={file.name}
         >
           {file.name}
           {isActiveLeft && (
-            <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-blue-500 align-middle" />
+            <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-blue-500 align-middle dark:bg-blue-400" />
           )}
           {isActiveRight && (
-            <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500 align-middle" />
+            <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-emerald-500 align-middle dark:bg-emerald-400" />
           )}
         </button>
       )}
 
-      <span className="hidden shrink-0 text-xs text-slate-400 group-hover:inline">
+      <span className="hidden shrink-0 text-xs text-slate-400 group-hover:inline dark:text-zinc-600">
         {formatBytes(file.size)}
       </span>
 
@@ -114,7 +114,7 @@ export default function FileRow({
         type="button"
         onClick={() => onOpen(file, "right")}
         title="Открыть в правой панели"
-        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex"
+        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
       >
         <Columns2 size={14} />
       </button>
@@ -122,7 +122,7 @@ export default function FileRow({
         type="button"
         onClick={() => onStartRename(file)}
         title="Переименовать"
-        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex"
+        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
       >
         <Pencil size={14} />
       </button>
@@ -130,7 +130,7 @@ export default function FileRow({
         type="button"
         onClick={() => onDelete(file)}
         title="Удалить"
-        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex [@media(hover:none)]:inline-flex"
+        className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex [@media(hover:none)]:inline-flex dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400"
       >
         <Trash2 size={14} />
       </button>

@@ -139,26 +139,32 @@ export default function FolderNode(props: FolderNodeProps) {
         onTouchEnd={longPress.onTouchEnd}
         onClickCapture={longPress.onClickCapture}
         data-drop-target={folder.id}
-        className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 ${
-          isActive ? "bg-slate-100 font-medium" : ""
-        } ${
+        className={[
+          "group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-zinc-800",
+          isActive ? "bg-slate-100 font-medium dark:bg-zinc-800" : "",
           dragOverTarget === folder.id
-            ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
-            : ""
-        }`}
+            ? "bg-blue-50 ring-1 ring-inset ring-blue-300 dark:bg-violet-900/40 dark:ring-1 dark:ring-inset dark:ring-violet-500"
+            : "",
+        ].join(" ")}
         style={{ paddingLeft: `${level * 16 + 4}px` }}
       >
         <button
           type="button"
           onClick={() => onToggleExpand(folder.id)}
-          className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-200"
+          className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-200 dark:text-zinc-500 dark:hover:bg-zinc-700"
         >
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
         {isExpanded ? (
-          <FolderOpen size={15} className="shrink-0 text-amber-500" />
+          <FolderOpen
+            size={15}
+            className="shrink-0 text-amber-500 dark:text-amber-400"
+          />
         ) : (
-          <Folder size={15} className="shrink-0 text-amber-500" />
+          <Folder
+            size={15}
+            className="shrink-0 text-amber-500 dark:text-amber-400"
+          />
         )}
 
         {isRenaming ? (
@@ -171,7 +177,7 @@ export default function FolderNode(props: FolderNodeProps) {
               if (e.key === "Escape") onRenameCancel();
             }}
             onBlur={onRenameSubmit}
-            className="min-w-0 flex-1 rounded border border-slate-300 px-1 py-0.5 text-sm focus:outline-none"
+            className="min-w-0 flex-1 rounded border border-slate-300 px-1 py-0.5 text-sm focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
           />
         ) : (
           <button
@@ -180,7 +186,7 @@ export default function FolderNode(props: FolderNodeProps) {
               onSetActiveFolder(folder.id);
               onToggleExpand(folder.id);
             }}
-            className="min-w-0 flex-1 truncate text-left"
+            className="min-w-0 flex-1 truncate text-left text-slate-700 dark:text-zinc-200"
             title={folder.name}
           >
             {folder.name}
@@ -191,7 +197,7 @@ export default function FolderNode(props: FolderNodeProps) {
           type="button"
           onClick={() => onStartRenameFolder(folder)}
           title="Переименовать"
-          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex"
+          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 group-hover:inline-flex [@media(hover:none)]:inline-flex dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
         >
           <Pencil size={14} />
         </button>
@@ -199,7 +205,7 @@ export default function FolderNode(props: FolderNodeProps) {
           type="button"
           onClick={() => onDeleteFolder(folder)}
           title="Удалить папку"
-          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex [@media(hover:none)]:inline-flex"
+          className="hidden shrink-0 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-red-600 group-hover:inline-flex [@media(hover:none)]:inline-flex dark:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-red-400"
         >
           <Trash2 size={14} />
         </button>
