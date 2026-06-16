@@ -3,6 +3,7 @@ const STORAGE_KEY = "pdf-viewer-state";
 interface FileViewerState {
   page?: number;
   scale?: number;
+  totalPages?: number;
 }
 
 function readAll(): Record<string, FileViewerState> {

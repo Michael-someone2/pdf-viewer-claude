@@ -9,6 +9,7 @@ import {
   type PaneId,
 } from "@/lib/types";
 import { useLongPressDrag } from "@/lib/useLongPressDrag";
+import { getViewerState } from "@/lib/viewerState";
 
 interface FileRowProps {
   file: FileRecord;
@@ -55,6 +56,12 @@ export default function FileRow({
     isRenaming,
   );
 
+  const saved = getViewerState(file.id);
+  const progress =
+    saved?.totalPages && saved.page
+      ? Math.min(Math.round((saved.page / saved.totalPages) * 100), 100)
+      : 0;
+
   return (
     <div
       draggable={!isRenaming}
@@ -70,7 +77,7 @@ export default function FileRow({
       onTouchMove={longPress.onTouchMove}
       onTouchEnd={longPress.onTouchEnd}
       onClickCapture={longPress.onClickCapture}
-      className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-zinc-800 ${
+      className={`relative group flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-slate-100 dark:hover:bg-zinc-800 ${
         isActiveLeft || isActiveRight ? "bg-slate-100 dark:bg-zinc-800" : ""
       }`}
       style={{ paddingLeft: `${level * 16 + 24}px` }}
@@ -134,6 +141,19 @@ export default function FileRow({
       >
         <Trash2 size={14} />
       </button>
+
+      {progress > 0 && (
+        <div className="absolute bottom-0 left-2 right-2 h-[2px] overflow-hidden rounded-full bg-slate-100 dark:bg-zinc-800">
+          <div
+            className={`h-full transition-all ${
+              progress >= 100
+                ? "bg-emerald-500 dark:bg-emerald-400"
+                : "bg-blue-400 dark:bg-violet-500"
+            }`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }

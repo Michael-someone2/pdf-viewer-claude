@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Search,
   X,
   ZoomIn,
   ZoomOut,
@@ -44,6 +45,17 @@ export default function PdfViewerPane({
   const [loadingUrl, setLoadingUrl] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Text search ────────────────────────────────────────────────────
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchPages, setSearchPages] = useState<number[]>([]);
+  const [searchIdx, setSearchIdx] = useState(0);
+  const [indexingDone, setIndexingDone] = useState(false);
+  const pdfDocRef = useRef<any>(null);
+  const pageTextsRef = useRef<Map<number, string>>(new Map());
+  const indexGenRef = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const prevItemHeightRef = useRef<number | null>(null);
@@ -64,6 +76,16 @@ export default function PdfViewerPane({
     prevItemHeightRef.current = null;
     pendingPageRef.current = null;
     if (containerRef.current) containerRef.current.scrollTop = 0;
+
+    // Reset search state for new file
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchPages([]);
+    setSearchIdx(0);
+    setIndexingDone(false);
+    pageTextsRef.current.clear();
+    pdfDocRef.current = null;
+    indexGenRef.current += 1;
 
     if (!file) return;
 
@@ -96,9 +118,24 @@ export default function PdfViewerPane({
     };
   }, [file]);
 
-  // При изменении масштаба пересчитываем прокрутку, чтобы текущая
-  // страница осталась на том же месте, а не "уплыла" из-за изменения
-  // высоты страниц.
+  // Build a plain-text index of all pages for in-pane search.
+  // Runs in the background page-by-page so it doesn't block the UI.
+  const buildTextIndex = async (pdf: any, gen: number) => {
+    pageTextsRef.current.clear();
+    for (let i = 1; i <= pdf.numPages; i++) {
+      if (indexGenRef.current !== gen) return; // file changed — abort
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const text = (content.items as any[])
+        .filter((item) => typeof item.str === "string")
+        .map((item) => item.str as string)
+        .join(" ")
+        .toLowerCase();
+      pageTextsRef.current.set(i, text);
+    }
+    if (indexGenRef.current === gen) setIndexingDone(true);
+  };
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !pageSize) return;
@@ -110,8 +147,6 @@ export default function PdfViewerPane({
     prevItemHeightRef.current = newItemHeight;
   }, [scale, pageSize]);
 
-  // При открытии файла прокручиваем к сохранённой странице, как только
-  // становится известен размер страницы.
   useEffect(() => {
     const el = containerRef.current;
     const pending = pendingPageRef.current;
@@ -164,9 +199,54 @@ export default function PdfViewerPane({
     if (file) setViewerState(file.id, { scale: next });
   };
 
-  // Зум щипком (pinch) на тач-устройствах. touch-action: pan-y на
-  // контейнере отключает нативный зум браузера, не мешая вертикальной
-  // прокрутке одним пальцем.
+  // ── Search helpers ─────────────────────────────────────────────────
+
+  const doSearch = (q: string) => {
+    const term = q.toLowerCase().trim();
+    if (!term) {
+      setSearchPages([]);
+      setSearchIdx(0);
+      return;
+    }
+    const matches: number[] = [];
+    for (const [page, text] of pageTextsRef.current) {
+      if (text.includes(term)) matches.push(page);
+    }
+    matches.sort((a, b) => a - b);
+    setSearchPages(matches);
+    setSearchIdx(0);
+    if (matches.length > 0) goToPage(matches[0]);
+  };
+
+  // Re-run search when indexing completes so results are complete.
+  useEffect(() => {
+    if (indexingDone && searchQuery.trim()) doSearch(searchQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indexingDone]);
+
+  const goToSearchResult = (dir: "next" | "prev") => {
+    if (searchPages.length < 2) return;
+    const next =
+      dir === "next"
+        ? (searchIdx + 1) % searchPages.length
+        : (searchIdx - 1 + searchPages.length) % searchPages.length;
+    setSearchIdx(next);
+    goToPage(searchPages[next]);
+  };
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    setTimeout(() => searchInputRef.current?.focus(), 40);
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchPages([]);
+    setSearchIdx(0);
+  };
+
+  // ── Pinch-to-zoom ──────────────────────────────────────────────────
   const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
 
   const touchDistance = (touches: React.TouchList) => {
@@ -212,87 +292,164 @@ export default function PdfViewerPane({
   return (
     // dark:flex-col-reverse перемещает тулбар вниз в тёмном режиме
     <div className="flex h-full flex-col dark:flex-col-reverse">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-t dark:border-b-0 dark:border-zinc-800 dark:bg-zinc-900">
-        <span
-          className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-zinc-100"
-          title={file.name}
-        >
-          {file.name}
-        </span>
-
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => goToPage(pageNumber - 1)}
-            disabled={pageNumber <= 1}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            title="Предыдущая страница"
+      {/* ── Toolbar ── */}
+      <div className="flex flex-col border-b border-slate-200 bg-white dark:border-t dark:border-b-0 dark:border-zinc-800 dark:bg-zinc-900">
+        {/* Main row */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+          <span
+            className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-zinc-100"
+            title={file.name}
           >
-            <ChevronLeft size={16} />
-          </button>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              goToPage(Number(pageInput));
-            }}
-            className="flex items-center gap-1"
-          >
-            <input
-              value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              onBlur={() => goToPage(Number(pageInput))}
-              className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-xs focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-              inputMode="numeric"
-            />
-            <span className="text-xs text-slate-400 dark:text-zinc-500">
-              / {numPages || "?"}
-            </span>
-          </form>
-          <button
-            type="button"
-            onClick={() => goToPage(pageNumber + 1)}
-            disabled={pageNumber >= numPages}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            title="Следующая страница"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => adjustScale(-0.1)}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            title="Уменьшить"
-          >
-            <ZoomOut size={16} />
-          </button>
-          <span className="w-10 text-center text-xs text-slate-500 dark:text-zinc-400">
-            {Math.round(scale * 100)}%
+            {file.name}
           </span>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => goToPage(pageNumber - 1)}
+              disabled={pageNumber <= 1}
+              className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Предыдущая страница"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                goToPage(Number(pageInput));
+              }}
+              className="flex items-center gap-1"
+            >
+              <input
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onBlur={() => goToPage(Number(pageInput))}
+                className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center text-xs focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                inputMode="numeric"
+              />
+              <span className="text-xs text-slate-400 dark:text-zinc-500">
+                / {numPages || "?"}
+              </span>
+            </form>
+            <button
+              type="button"
+              onClick={() => goToPage(pageNumber + 1)}
+              disabled={pageNumber >= numPages}
+              className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Следующая страница"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => adjustScale(-0.1)}
+              className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Уменьшить"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <span className="w-10 text-center text-xs text-slate-500 dark:text-zinc-400">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => adjustScale(0.1)}
+              className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Увеличить"
+            >
+              <ZoomIn size={16} />
+            </button>
+          </div>
+
           <button
             type="button"
-            onClick={() => adjustScale(0.1)}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-            title="Увеличить"
+            onClick={searchOpen ? closeSearch : openSearch}
+            className={`rounded p-1 transition-colors ${
+              searchOpen
+                ? "bg-blue-50 text-blue-600 dark:bg-violet-900/40 dark:text-violet-400"
+                : "text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            }`}
+            title="Поиск по тексту"
           >
-            <ZoomIn size={16} />
+            <Search size={16} />
           </button>
+
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-red-400"
+              title="Закрыть панель"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-red-400"
-            title="Закрыть панель"
-          >
-            <X size={16} />
-          </button>
+        {/* Search row */}
+        {searchOpen && (
+          <div className="flex items-center gap-1.5 border-t border-slate-100 px-3 py-1.5 dark:border-zinc-800">
+            <Search
+              size={13}
+              className="shrink-0 text-slate-400 dark:text-zinc-500"
+            />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                doSearch(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") goToSearchResult("next");
+                if (e.key === "Escape") closeSearch();
+              }}
+              placeholder="Поиск по тексту..."
+              className="min-w-0 flex-1 bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none dark:text-zinc-200 dark:placeholder-zinc-600"
+            />
+            {searchQuery && (
+              <span className="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-zinc-500">
+                {!indexingDone
+                  ? "Индексирую..."
+                  : searchPages.length === 0
+                    ? "Не найдено"
+                    : `стр. ${searchPages[searchIdx]}  (${searchIdx + 1}/${searchPages.length})`}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => goToSearchResult("prev")}
+              disabled={searchPages.length < 2}
+              className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Предыдущее совпадение"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => goToSearchResult("next")}
+              disabled={searchPages.length < 2}
+              className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Следующее совпадение"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={closeSearch}
+              className="rounded p-0.5 text-slate-400 hover:bg-slate-100 dark:text-zinc-600 dark:hover:bg-zinc-800"
+              title="Закрыть поиск"
+            >
+              <X size={14} />
+            </button>
+          </div>
         )}
       </div>
 
+      {/* ── PDF scroll area ── */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
@@ -318,7 +475,11 @@ export default function PdfViewerPane({
             file={url}
             onLoadSuccess={(pdf) => {
               setNumPages(pdf.numPages);
-              pdf.getPage(1).then((page) => {
+              if (file) setViewerState(file.id, { totalPages: pdf.numPages });
+              pdfDocRef.current = pdf;
+              const gen = indexGenRef.current;
+              buildTextIndex(pdf, gen);
+              pdf.getPage(1).then((page: any) => {
                 const viewport = page.getViewport({ scale: 1 });
                 setPageSize({
                   width: viewport.width,
