@@ -1,36 +1,62 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
- * Глобально запрещает браузерный зум СТРАНИЦЫ всеми способами ввода.
- * Монтируется один раз в <body> и живёт всё время работы приложения.
+ * Глобально запрещает браузерный зум СТРАНИЦЫ всеми способами ввода,
+ * И одновременно работает живым диагностическим зондом (временно).
  *
- * Почему именно так:
- * - touch-action в CSS ненадёжно гасит pinch-zoom визуального вьюпорта на
- *   Windows/Chrome, а user-scalable=no Chrome вообще игнорирует.
- * - Единственный надёжный способ — НЕпассивный слушатель на document, который
- *   вызывает preventDefault. {passive:false} заставляет Chrome ждать главный
- *   поток, поэтому зум реально отменяется (а не запускается на compositor'е).
- *
- * Зум PDF при этом НЕ ломается: PdfViewerPane читает те же touch-события и сам
- * считает масштаб — preventDefault отменяет только дефолтное действие браузера,
- * но не мешает нашим обработчикам отработать.
+ * Зонд пишет прямо на плашку: число пальцев, cancelable события и реальный
+ * computed touch-action элемента под пальцем — чтобы понять, почему пинч
+ * всё ещё зумит страницу на устройстве пользователя.
  */
 export default function ZoomGuard() {
+  const probeRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
+    const setProbe = (text: string) => {
+      if (probeRef.current) probeRef.current.textContent = text;
+    };
+
+    const describe = (e: TouchEvent) => {
+      const t = e.target as Element | null;
+      const tag = t?.tagName ?? "?";
+      const ta = t
+        ? getComputedStyle(t).touchAction
+        : "?";
+      setProbe(
+        `n=${e.touches.length} canc=${e.cancelable ? "Y" : "N"} ${tag} ta=${ta}`,
+      );
+    };
+
     // Тач-пинч (2+ пальца) на тачскрине
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        describe(e);
+        if (e.cancelable) e.preventDefault();
+      }
+    };
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 1) e.preventDefault();
+      if (e.touches.length > 1) {
+        describe(e);
+        if (e.cancelable) e.preventDefault();
+      }
     };
     // Safari (iPad/Mac) использует отдельные gesture-события
-    const onGesture = (e: Event) => e.preventDefault();
+    const onGesture = (e: Event) => {
+      setProbe(`gesture ${e.type}`);
+      e.preventDefault();
+    };
     // Трекпад-пинч и Ctrl+колесо мыши приходят как wheel с ctrlKey
     const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) e.preventDefault();
+      if (e.ctrlKey) {
+        setProbe(`wheel ctrl canc=${e.cancelable ? "Y" : "N"}`);
+        e.preventDefault();
+      }
     };
 
     const opts = { passive: false } as const;
+    document.addEventListener("touchstart", onTouchStart, opts);
     document.addEventListener("touchmove", onTouchMove, opts);
     document.addEventListener("gesturestart", onGesture, opts);
     document.addEventListener("gesturechange", onGesture, opts);
@@ -38,6 +64,7 @@ export default function ZoomGuard() {
     document.addEventListener("wheel", onWheel, opts);
 
     return () => {
+      document.removeEventListener("touchstart", onTouchStart);
       document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("gesturestart", onGesture);
       document.removeEventListener("gesturechange", onGesture);
@@ -46,11 +73,10 @@ export default function ZoomGuard() {
     };
   }, []);
 
-  // ВРЕМЕННЫЙ диагностический маркер: подтверждает, что новый код реально
-  // загрузился на устройстве. Если этой плашки нет — значит до сайта доходит
-  // старая сборка (кэш/деплой), и проблема не в коде. Уберём после проверки.
+  // ВРЕМЕННЫЙ диагностический зонд — читается глазами на устройстве.
   return (
     <div
+      ref={probeRef}
       style={{
         position: "fixed",
         left: 4,
@@ -62,9 +88,12 @@ export default function ZoomGuard() {
         padding: "2px 5px",
         borderRadius: 4,
         pointerEvents: "none",
+        maxWidth: "95vw",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
       }}
     >
-      ZG
+      ZG ready
     </div>
   );
 }
