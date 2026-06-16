@@ -111,9 +111,9 @@ export default function PdfViewerPane({
   const prevItemHeightRef = useRef<number | null>(null);
   const pendingPageRef = useRef<number | null>(null);
   const pageNumberRef = useRef(1);
-  // Когда пинч завершён, сюда кладётся целевой scrollTop, чтобы точка между
-  // пальцами осталась на месте после пересчёта реального масштаба.
-  const committingPinchRef = useRef<number | null>(null);
+  // Когда пинч завершён, сюда кладётся целевой scroll (top+left), чтобы точка
+  // между пальцами осталась на месте после пересчёта реального масштаба.
+  const committingPinchRef = useRef<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
@@ -197,8 +197,9 @@ export default function PdfViewerPane({
     const newItemHeight = pageSize.height * scale + PAGE_GAP;
     if (committingPinchRef.current !== null) {
       // Масштаб только что зафиксирован пинчем — ставим заранее посчитанный
-      // scrollTop, чтобы точка между пальцами осталась на месте.
-      el.scrollTop = Math.max(0, committingPinchRef.current);
+      // scroll, чтобы точка между пальцами осталась на месте (по обеим осям).
+      el.scrollTop = Math.max(0, committingPinchRef.current.top);
+      el.scrollLeft = Math.max(0, committingPinchRef.current.left);
       committingPinchRef.current = null;
     } else {
       // Кнопки +/− : сохраняем относительную позицию по доле сверху.
@@ -348,6 +349,7 @@ export default function PdfViewerPane({
     let originX = 0; // точка между пальцами относительно wrapper
     let originY = 0;
     let startScrollTop = 0;
+    let startScrollLeft = 0;
     let lastY = 0;
     let lastT = 0;
     let velocity = 0; // px/ms, для инерции
@@ -386,6 +388,7 @@ export default function PdfViewerPane({
       pinchScale = scaleRef.current;
       liveFactor = 1;
       startScrollTop = el.scrollTop;
+      startScrollLeft = el.scrollLeft;
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       const rect = wrapper.getBoundingClientRect();
@@ -439,8 +442,11 @@ export default function PdfViewerPane({
         wrapper.style.transform = "";
         wrapper.style.transformOrigin = "";
       }
-      // scrollTop_end = S0 + originY*(f-1)
-      committingPinchRef.current = startScrollTop + originY * (liveFactor - 1);
+      // Точка фокуса остаётся на месте по обеим осям: scroll = S0 + origin*(f-1)
+      committingPinchRef.current = {
+        top: startScrollTop + originY * (liveFactor - 1),
+        left: startScrollLeft + originX * (liveFactor - 1),
+      };
       scaleRef.current = finalScale;
       setScale(finalScale);
       if (fileRef.current)
@@ -725,7 +731,15 @@ export default function PdfViewerPane({
                 <div
                   ref={pagesWrapperRef}
                   className="flex flex-col items-center"
-                  style={{ willChange: "transform" }}
+                  style={{
+                    willChange: "transform",
+                    // Узкий PDF центрируется (min-width:100% + mx-auto), широкий
+                    // растёт по контенту и прокручивается, начиная с левого края
+                    // (а не центрируется с недостижимой левой частью).
+                    width: "fit-content",
+                    minWidth: "100%",
+                    marginInline: "auto",
+                  }}
                 >
                   {Array.from({ length: numPages }, (_, i) => i + 1).map(
                     (p) => (
