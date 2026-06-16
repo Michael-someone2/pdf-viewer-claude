@@ -18,29 +18,43 @@ export default function ZoomGuard() {
       if (probeRef.current) probeRef.current.textContent = text;
     };
 
-    const describe = (e: TouchEvent) => {
+    // Накапливаем данные за один жест и замораживаем на экране,
+    // чтобы пользователь успел прочитать после того, как уберёт пальцы.
+    let anyNonCancelable = false;
+    let allCancelable = true;
+    let seen = new Set<string>();
+    let maxTouches = 0;
+
+    const record = (e: TouchEvent) => {
+      maxTouches = Math.max(maxTouches, e.touches.length);
+      if (e.cancelable) {
+        e.preventDefault();
+      } else {
+        anyNonCancelable = true;
+        allCancelable = false;
+      }
       const t = e.target as Element | null;
       const tag = t?.tagName ?? "?";
-      const ta = t
-        ? getComputedStyle(t).touchAction
-        : "?";
+      const ta = t ? getComputedStyle(t).touchAction : "?";
+      seen.add(`${tag}:${ta}`);
       setProbe(
-        `n=${e.touches.length} canc=${e.cancelable ? "Y" : "N"} ${tag} ta=${ta}`,
+        `n=${maxTouches} canc=${allCancelable ? "Y" : anyNonCancelable ? "N" : "Y"} {${[...seen].join(",")}}`,
       );
     };
 
     // Тач-пинч (2+ пальца) на тачскрине
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length > 1) {
-        describe(e);
-        if (e.cancelable) e.preventDefault();
+        // новый жест — сброс накопителя
+        anyNonCancelable = false;
+        allCancelable = true;
+        seen = new Set<string>();
+        maxTouches = 0;
+        record(e);
       }
     };
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 1) {
-        describe(e);
-        if (e.cancelable) e.preventDefault();
-      }
+      if (e.touches.length > 1) record(e);
     };
     // Safari (iPad/Mac) использует отдельные gesture-события
     const onGesture = (e: Event) => {
