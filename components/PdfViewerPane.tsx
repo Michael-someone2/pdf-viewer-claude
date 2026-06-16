@@ -350,8 +350,10 @@ export default function PdfViewerPane({
 
     el.addEventListener("touchmove", handleTouchMove, { passive: false });
     return () => el.removeEventListener("touchmove", handleTouchMove);
+  // file в deps: при file=null containerRef.current=null и listener не регистрируется;
+  // re-run при смене файла гарантирует регистрацию на реальном DOM-элементе
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [file]);
 
   const onTouchEnd = (e: React.TouchEvent) => {
     if (e.touches.length < 2 && pinchRef.current) {
