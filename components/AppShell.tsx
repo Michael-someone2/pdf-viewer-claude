@@ -14,6 +14,15 @@ import FileBrowser from "./FileBrowser";
 import SplitViewer from "./SplitViewer";
 import type { FileRecord, PaneId } from "@/lib/types";
 
+// Запрещаем браузерный пинч-зум на всей странице
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "touchmove",
+    (e) => { if (e.touches.length > 1) e.preventDefault(); },
+    { passive: false },
+  );
+}
+
 interface AppShellProps {
   userEmail: string;
 }
