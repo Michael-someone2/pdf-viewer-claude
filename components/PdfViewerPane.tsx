@@ -106,10 +106,14 @@ export default function PdfViewerPane({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const pagesWrapperRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const prevItemHeightRef = useRef<number | null>(null);
   const pendingPageRef = useRef<number | null>(null);
   const pageNumberRef = useRef(1);
+  // Когда пинч завершён, сюда кладётся целевой scrollTop, чтобы точка между
+  // пальцами осталась на месте после пересчёта реального масштаба.
+  const committingPinchRef = useRef<number | null>(null);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
@@ -191,9 +195,17 @@ export default function PdfViewerPane({
     const el = containerRef.current;
     if (!el || !pageSize) return;
     const newItemHeight = pageSize.height * scale + PAGE_GAP;
-    const prevItemHeight = prevItemHeightRef.current;
-    if (prevItemHeight && prevItemHeight !== newItemHeight) {
-      el.scrollTop = (el.scrollTop / prevItemHeight) * newItemHeight;
+    if (committingPinchRef.current !== null) {
+      // Масштаб только что зафиксирован пинчем — ставим заранее посчитанный
+      // scrollTop, чтобы точка между пальцами осталась на месте.
+      el.scrollTop = Math.max(0, committingPinchRef.current);
+      committingPinchRef.current = null;
+    } else {
+      // Кнопки +/− : сохраняем относительную позицию по доле сверху.
+      const prevItemHeight = prevItemHeightRef.current;
+      if (prevItemHeight && prevItemHeight !== newItemHeight) {
+        el.scrollTop = (el.scrollTop / prevItemHeight) * newItemHeight;
+      }
     }
     prevItemHeightRef.current = newItemHeight;
   }, [scale, pageSize]);
@@ -331,7 +343,11 @@ export default function PdfViewerPane({
     type Mode = "none" | "pan" | "pinch";
     let mode: Mode = "none";
     let pinchDist = 0;
-    let pinchScale = 1;
+    let pinchScale = 1; // зафиксированный масштаб на старте жеста
+    let liveFactor = 1; // текущий визуальный множитель (liveScale / pinchScale)
+    let originX = 0; // точка между пальцами относительно wrapper
+    let originY = 0;
+    let startScrollTop = 0;
     let lastY = 0;
     let lastT = 0;
     let velocity = 0; // px/ms, для инерции
@@ -361,12 +377,27 @@ export default function PdfViewerPane({
       inertiaRaf = requestAnimationFrame(step);
     };
 
+    // Начать пинч: запомнить базу и точку между пальцами относительно wrapper.
+    const beginPinch = (e: TouchEvent) => {
+      const wrapper = pagesWrapperRef.current;
+      if (!wrapper) return;
+      mode = "pinch";
+      pinchDist = dist(e.touches);
+      pinchScale = scaleRef.current;
+      liveFactor = 1;
+      startScrollTop = el.scrollTop;
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = wrapper.getBoundingClientRect();
+      originX = midX - rect.left;
+      originY = midY - rect.top;
+      wrapper.style.transformOrigin = `${originX}px ${originY}px`;
+    };
+
     const onStart = (e: TouchEvent) => {
       stopInertia();
       if (e.touches.length >= 2) {
-        mode = "pinch";
-        pinchDist = dist(e.touches);
-        pinchScale = scaleRef.current;
+        beginPinch(e);
       } else if (e.touches.length === 1) {
         mode = "pan";
         lastY = e.touches[0].clientY;
@@ -378,12 +409,15 @@ export default function PdfViewerPane({
     const onMove = (e: TouchEvent) => {
       if (mode === "pinch" && e.touches.length >= 2) {
         e.preventDefault();
-        const next = Math.min(
+        const wrapper = pagesWrapperRef.current;
+        if (!wrapper) return;
+        const liveScale = Math.min(
           3,
-          Math.max(0.4, +(pinchScale * (dist(e.touches) / pinchDist)).toFixed(2)),
+          Math.max(0.4, pinchScale * (dist(e.touches) / pinchDist)),
         );
-        scaleRef.current = next;
-        setScale(next);
+        liveFactor = liveScale / pinchScale;
+        // Дешёвый GPU-трансформ — без перерисовки canvas, центр между пальцами.
+        wrapper.style.transform = `scale(${liveFactor})`;
       } else if (mode === "pan" && e.touches.length === 1) {
         e.preventDefault();
         const y = e.touches[0].clientY;
@@ -396,10 +430,26 @@ export default function PdfViewerPane({
       }
     };
 
+    // Зафиксировать пинч: убрать трансформ, пересчитать реальный масштаб один
+    // раз и поставить scrollTop так, чтобы точка между пальцами не сместилась.
+    const commitPinch = () => {
+      const wrapper = pagesWrapperRef.current;
+      const finalScale = +(pinchScale * liveFactor).toFixed(3);
+      if (wrapper) {
+        wrapper.style.transform = "";
+        wrapper.style.transformOrigin = "";
+      }
+      // scrollTop_end = S0 + originY*(f-1)
+      committingPinchRef.current = startScrollTop + originY * (liveFactor - 1);
+      scaleRef.current = finalScale;
+      setScale(finalScale);
+      if (fileRef.current)
+        setViewerState(fileRef.current.id, { scale: finalScale });
+    };
+
     const onEnd = (e: TouchEvent) => {
       if (mode === "pinch") {
-        if (fileRef.current)
-          setViewerState(fileRef.current.id, { scale: scaleRef.current });
+        commitPinch();
       } else if (mode === "pan") {
         startInertia();
       }
@@ -672,7 +722,11 @@ export default function PdfViewerPane({
               }
             >
               {pageSize && (
-                <div className="flex flex-col items-center">
+                <div
+                  ref={pagesWrapperRef}
+                  className="flex flex-col items-center"
+                  style={{ willChange: "transform" }}
+                >
                   {Array.from({ length: numPages }, (_, i) => i + 1).map(
                     (p) => (
                       <div
